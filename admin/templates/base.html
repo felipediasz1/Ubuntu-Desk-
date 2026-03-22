@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Ubuntu Desk — Admin{% endblock %}</title>
-  <style>
+  <style nonce="{{ csp_nonce }}">
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
@@ -260,6 +260,12 @@
       <h1>{% block page_title %}Painel{% endblock %}</h1>
       <span style="color: var(--muted); font-size: 13px;">Admin</span>
     </div>
+    {% if default_password_warning %}
+    <div style="background:rgba(251,191,36,0.08);border-bottom:1px solid rgba(251,191,36,0.3);color:#FCD34D;padding:10px 24px;font-size:13px;display:flex;align-items:center;gap:8px;">
+      <span>⚠</span>
+      <span>Você está usando a <strong>senha padrão</strong>. Altere a variável de ambiente <code>ADMIN_PASSWORD</code> antes de expor o painel na rede.</span>
+    </div>
+    {% endif %}
     <div class="content">
       {% block content %}{% endblock %}
     </div>

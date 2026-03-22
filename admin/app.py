@@ -9,6 +9,7 @@ import os
 import re
 import socket
 import hashlib
+import hmac
 import secrets
 import time
 import csv
@@ -16,6 +17,7 @@ import io
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+from urllib.parse import urlparse, urljoin
 from flask import Flask, render_template, redirect, url_for, request, session, g, abort, send_file, jsonify, Response
 
 app = Flask(__name__)
@@ -33,6 +35,12 @@ def _load_secret_key():
 
 app.secret_key = _load_secret_key()
 app.permanent_session_lifetime = timedelta(hours=2)
+app.config["SESSION_COOKIE_SAMESITE"] = "Strict"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+# Ativar apenas quando o painel estiver atrás de HTTPS (nginx/proxy)
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("HTTPS_ONLY", "").lower() in ("1", "true", "yes")
+
+_DEFAULT_PASSWORD = "ubuntu-desk-admin"
 
 # ── Configuração ──────────────────────────────────────────────────────────────
 DB_PATH       = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "..", "server", "data", "db_v2.sqlite3"))
@@ -67,7 +75,9 @@ def _remaining_attempts(ip: str) -> int:
 
 # ── Audit log (SQLite próprio) ────────────────────────────────────────────────
 AUDIT_RETENTION_DAYS = int(os.environ.get("AUDIT_RETENTION_DAYS", 90))
-_audit_purged = False  # purge uma vez por processo
+_audit_purged = False          # purge uma vez por processo
+_audit_db_initialized = False  # DDL executado uma vez por processo
+_api_db_initialized   = False  # DDL executado uma vez por processo
 
 # Mapeamento ação → categoria
 _ACTION_CATEGORY = {
@@ -97,23 +107,26 @@ def _categorize(action: str) -> str:
     return "system"
 
 def _get_audit_db():
+    global _audit_db_initialized
     os.makedirs(os.path.dirname(AUDIT_DB), exist_ok=True)
     conn = sqlite3.connect(AUDIT_DB)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS audit_log (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            ts        TEXT    NOT NULL,
-            action    TEXT    NOT NULL,
-            detail    TEXT,
-            ip        TEXT,
-            category  TEXT    NOT NULL DEFAULT 'system'
-        )
-    """)
-    # migração: adiciona coluna category se não existir
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(audit_log)").fetchall()]
-    if "category" not in cols:
-        conn.execute("ALTER TABLE audit_log ADD COLUMN category TEXT NOT NULL DEFAULT 'system'")
-    conn.commit()
+    if not _audit_db_initialized:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts        TEXT    NOT NULL,
+                action    TEXT    NOT NULL,
+                detail    TEXT,
+                ip        TEXT,
+                category  TEXT    NOT NULL DEFAULT 'system'
+            )
+        """)
+        # migração: adiciona coluna category se não existir
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(audit_log)").fetchall()]
+        if "category" not in cols:
+            conn.execute("ALTER TABLE audit_log ADD COLUMN category TEXT NOT NULL DEFAULT 'system'")
+        conn.commit()
+        _audit_db_initialized = True
     return conn
 
 def _purge_old_audit():
@@ -130,13 +143,19 @@ def _purge_old_audit():
     except Exception:
         pass
 
+def _sanitize_log(s: str) -> str:
+    """Remove newlines e caracteres de controle para evitar log injection."""
+    return re.sub(r"[\x00-\x1f\x7f]", " ", s).strip()[:512]
+
 def audit(action: str, detail: str = "", category: str = ""):
     try:
         ip = request.remote_addr
     except RuntimeError:
         ip = "system"
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    ts  = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     cat = category or _categorize(action)
+    action = _sanitize_log(action)
+    detail = _sanitize_log(detail)
     try:
         conn = _get_audit_db()
         conn.execute(
@@ -171,11 +190,28 @@ def query(sql, args=()):
     return cur.fetchall()
 
 # ── Auth helpers ───────────────────────────────────────────────────────────────
+
+# Cache do hash da senha admin — derivado uma vez com PBKDF2 (260k iterações).
+# Salt fixo derivado da secret key para não precisar de storage extra.
+_PASS_HASH_CACHE: bytes | None = None
+
+def _pass_salt() -> bytes:
+    """Salt de 16 bytes derivado da secret key do app."""
+    raw = app.secret_key.encode("utf-8", errors="replace")
+    return hashlib.sha256(raw).digest()[:16]
+
+def _pbkdf2(pwd: str) -> bytes:
+    return hashlib.pbkdf2_hmac("sha256", pwd.encode(), _pass_salt(), 260_000)
+
+def _admin_hash() -> bytes:
+    global _PASS_HASH_CACHE
+    if _PASS_HASH_CACHE is None:
+        _PASS_HASH_CACHE = _pbkdf2(ADMIN_PASS)
+    return _PASS_HASH_CACHE
+
 def check_password(pwd: str) -> bool:
-    return (
-        hashlib.sha256(pwd.encode()).hexdigest()
-        == hashlib.sha256(ADMIN_PASS.encode()).hexdigest()
-    )
+    """Compara senha usando PBKDF2-SHA256 + timing-safe compare."""
+    return hmac.compare_digest(_pbkdf2(pwd), _admin_hash())
 
 def check_totp(code: str) -> bool:
     if not TOTP_SECRET:
@@ -194,6 +230,64 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
+# ── Security headers ──────────────────────────────────────────────────────────
+@app.after_request
+def set_security_headers(response):
+    # Gera um nonce único por request para permitir inline scripts/styles sem unsafe-inline
+    nonce = g.get("csp_nonce", "")
+    response.headers["X-Frame-Options"]           = "SAMEORIGIN"
+    response.headers["X-Content-Type-Options"]    = "nosniff"
+    response.headers["X-XSS-Protection"]          = "1; mode=block"
+    response.headers["Referrer-Policy"]           = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"]        = (
+        "camera=(), microphone=(), geolocation=(), "
+        "payment=(), usb=(), bluetooth=()"
+    )
+    nonce_src = f"'nonce-{nonce}'" if nonce else "'unsafe-inline'"
+    response.headers["Content-Security-Policy"] = (
+        f"default-src 'self'; "
+        f"script-src 'self' {nonce_src}; "
+        f"style-src 'self' {nonce_src}; "
+        f"img-src 'self' data:; "
+        f"font-src 'self'; "
+        f"object-src 'none'; "
+        f"base-uri 'self';"
+    )
+    return response
+
+# ── CSP nonce + CSRF + context processor ─────────────────────────────────────
+@app.before_request
+def generate_csp_nonce():
+    g.csp_nonce = secrets.token_hex(16)
+
+def _get_csrf_token() -> str:
+    """Retorna (ou cria) o token CSRF da sessão atual."""
+    if "_csrf" not in session:
+        session["_csrf"] = secrets.token_hex(24)
+    return session["_csrf"]
+
+@app.before_request
+def check_csrf():
+    """Valida token CSRF em todos os POSTs de rotas web (não API)."""
+    if request.method not in ("POST", "PUT", "DELETE", "PATCH"):
+        return
+    if request.path.startswith("/api/"):
+        return  # APIs usam Bearer/X-Api-Key
+    token_form   = request.form.get("csrf_token", "")
+    token_header = request.headers.get("X-CSRF-Token", "")
+    token        = token_form or token_header
+    expected     = session.get("_csrf", "")
+    if not expected or not token or not hmac.compare_digest(token, expected):
+        abort(403)
+
+@app.context_processor
+def inject_globals():
+    return {
+        "csp_nonce":               g.get("csp_nonce", ""),
+        "csrf_token":              _get_csrf_token(),
+        "default_password_warning": ADMIN_PASS == _DEFAULT_PASSWORD,
+    }
+
 # ── Session timeout ───────────────────────────────────────────────────────────
 @app.before_request
 def check_session_timeout():
@@ -209,6 +303,16 @@ def check_session_timeout():
         session.permanent = True
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+def _safe_redirect(target: str) -> str:
+    """Valida que o redirect aponta para o mesmo host (evita open redirect CWE-601)."""
+    if not target:
+        return url_for("index")
+    ref_url  = urlparse(request.host_url)
+    test_url = urlparse(urljoin(request.host_url, target))
+    if test_url.scheme in ("http", "https") and ref_url.netloc == test_url.netloc:
+        return target
+    return url_for("index")
+
 def parse_info(info_str):
     try:
         return json.loads(info_str) if info_str else {}
@@ -244,7 +348,7 @@ def login():
                 session["last_active"] = time.time()
                 session.permanent      = True
                 audit("login_ok")
-                return redirect(request.args.get("next") or url_for("index"))
+                return redirect(_safe_redirect(request.args.get("next", "")))
             else:
                 _record_attempt(ip)
                 rem = _remaining_attempts(ip)
@@ -371,14 +475,15 @@ def _list_recordings() -> list:
 @app.route("/recordings")
 @login_required
 def recordings():
-    recs = _list_recordings()
+    all_recs    = _list_recordings()
     peer_filter = request.args.get("peer", "").strip()
     dir_filter  = request.args.get("direction", "").strip()
+    recs = all_recs
     if peer_filter:
         recs = [r for r in recs if peer_filter.lower() in r["peer_id"].lower()]
     if dir_filter in ("incoming", "outgoing"):
         recs = [r for r in recs if r["direction"] == dir_filter]
-    peers = sorted({r["peer_id"] for r in _list_recordings()})
+    peers = sorted({r["peer_id"] for r in all_recs})
     return render_template("recordings.html",
         recordings=recs,
         peers=peers,
@@ -401,7 +506,7 @@ def download_recording(filename):
 def api_record():
     """Recebe chunks de gravação enviados pelo cliente Ubuntu Desk."""
     api_key = request.headers.get("X-Api-Key", "")
-    if hashlib.sha256(api_key.encode()).hexdigest() != hashlib.sha256(ADMIN_PASS.encode()).hexdigest():
+    if not api_key or not _api_key_valid(api_key):
         abort(401)
     action   = request.form.get("action", "")
     filename = os.path.basename(request.form.get("filename", "unknown.webm"))
@@ -557,13 +662,11 @@ def _read_client_config():
             for line in f:
                 if "RENDEZVOUS_SERVERS" in line and "&[" in line:
                     # pub const RENDEZVOUS_SERVERS: &[&str] = &["192.168.18.4"];
-                    import re as _re
-                    m = _re.search(r'"([^"]+)"', line)
+                    m = re.search(r'"([^"]+)"', line)
                     if m:
                         server_ip = m.group(1)
                 elif "RS_PUB_KEY" in line and '= "' in line:
-                    import re as _re
-                    m = _re.search(r'"([^"]+)"', line)
+                    m = re.search(r'"([^"]+)"', line)
                     if m:
                         pub_key = m.group(1)
     except Exception:
@@ -587,30 +690,33 @@ def deploy():
 # Protocolo: legacy mode (GET/POST /api/ab com Bearer token).
 
 def _get_api_db():
+    global _api_db_initialized
     os.makedirs(os.path.dirname(API_DB), exist_ok=True)
     conn = sqlite3.connect(API_DB, check_same_thread=False)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS api_tokens (
-            token      TEXT PRIMARY KEY,
-            created_at REAL NOT NULL
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS address_books (
-            id   INTEGER PRIMARY KEY,
-            data TEXT    NOT NULL DEFAULT '{}'
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS api_keys (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            name       TEXT    NOT NULL,
-            key        TEXT    UNIQUE NOT NULL,
-            created_at REAL    NOT NULL,
-            last_used  REAL
-        )
-    """)
-    conn.commit()
+    if not _api_db_initialized:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS api_tokens (
+                token      TEXT PRIMARY KEY,
+                created_at REAL NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS address_books (
+                id   INTEGER PRIMARY KEY,
+                data TEXT    NOT NULL DEFAULT '{}'
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       TEXT    NOT NULL,
+                key        TEXT    UNIQUE NOT NULL,
+                created_at REAL    NOT NULL,
+                last_used  REAL
+            )
+        """)
+        conn.commit()
+        _api_db_initialized = True
     return conn
 
 def _api_token_valid(token: str) -> bool:
@@ -660,6 +766,10 @@ def api_login_options():
 
 @app.route("/api/login", methods=["POST"])
 def api_login():
+    ip = request.remote_addr
+    if _is_locked(ip):
+        audit("login_bloqueado", "IP bloqueado (API) por excesso de tentativas")
+        return jsonify({"error": "Too many login attempts. Try again later."}), 429
     body = request.get_json(silent=True) or {}
     username = body.get("username") or body.get("id") or ""
     password = body.get("password") or ""
@@ -672,6 +782,7 @@ def api_login():
         )
         conn.commit()
         conn.close()
+        _clear_attempts(ip)
         audit("api_login_ok", f"user={username}")
         return jsonify({
             "type": "access_token",
@@ -685,7 +796,9 @@ def api_login():
                 "is_admin": True,
             },
         })
-    audit("api_login_falha", f"user={username}")
+    _record_attempt(ip)
+    rem = _remaining_attempts(ip)
+    audit("api_login_falha", f"user={username} tentativas_restantes={rem}")
     return jsonify({"error": "Invalid credentials"}), 401
 
 @app.route("/api/currentUser", methods=["GET", "POST"])
@@ -1049,5 +1162,21 @@ def apidocs():
     base_url = f"http://{server_ip}:{PORT}" if server_ip else f"http://SEU-SERVIDOR:{PORT}"
     return render_template("api_docs.html", base_url=base_url)
 
+def _startup_security_check():
+    import sys
+    w = []
+    if ADMIN_PASS == _DEFAULT_PASSWORD:
+        w.append("ADMIN_PASSWORD está no valor padrão — altere antes de expor na rede")
+    if not TOTP_SECRET:
+        w.append("2FA desativado — defina TOTP_SECRET para maior segurança")
+    if not app.config.get("SESSION_COOKIE_SECURE"):
+        w.append("HTTPS_ONLY não ativado — recomendado atrás de proxy HTTPS")
+    if w:
+        print("\n[Ubuntu Desk Admin] AVISOS DE SEGURANÇA:", file=sys.stderr)
+        for msg in w:
+            print(f"  ⚠  {msg}", file=sys.stderr)
+        print("", file=sys.stderr)
+
 if __name__ == "__main__":
+    _startup_security_check()
     app.run(host="0.0.0.0", port=PORT, debug=False)

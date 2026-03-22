@@ -4,7 +4,7 @@
 
 {% block content %}
 
-<style>
+<style nonce="{{ csp_nonce }}">
   .code-block {
     background: #0F172A;
     border: 1px solid var(--border);
@@ -80,13 +80,13 @@
   <div style="margin-bottom: 14px;">
     <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Comando completo com servidor pré-configurado:</div>
     <div class="code-block" id="cmd-silent">ubuntu-desk-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SERVER={{ server_ip or 'IP_DO_SERVIDOR' }} /KEY={{ pub_key or 'CHAVE_PUBLICA' }}</div>
-    <button class="copy-btn" onclick="copyCode('cmd-silent', this)">copiar</button>
+    <button class="copy-btn" data-copy="cmd-silent">copiar</button>
   </div>
 
   <div>
     <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Mínimo (sem configuração de servidor):</div>
     <div class="code-block" id="cmd-min">ubuntu-desk-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART</div>
-    <button class="copy-btn" onclick="copyCode('cmd-min', this)">copiar</button>
+    <button class="copy-btn" data-copy="cmd-min">copiar</button>
   </div>
 </div>
 
@@ -100,19 +100,19 @@
   <div style="margin-bottom: 14px;">
     <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Deploy local silencioso:</div>
     <div class="code-block" id="cmd-ps1">.\build\deploy_windows.ps1 -ServerIP {{ server_ip or 'IP_DO_SERVIDOR' }} -PubKey "{{ pub_key or 'CHAVE_PUBLICA' }}" -Silent</div>
-    <button class="copy-btn" onclick="copyCode('cmd-ps1', this)">copiar</button>
+    <button class="copy-btn" data-copy="cmd-ps1">copiar</button>
   </div>
 
   <div style="margin-bottom: 14px;">
     <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Deploy via UNC com startup automático:</div>
     <div class="code-block" id="cmd-unc">\\servidor\share\deploy_windows.ps1 -InstallerPath \\servidor\share\ubuntu-desk-setup.exe -ServerIP {{ server_ip or 'IP_DO_SERVIDOR' }} -PubKey "{{ pub_key or 'CHAVE_PUBLICA' }}" -Silent -Startup</div>
-    <button class="copy-btn" onclick="copyCode('cmd-unc', this)">copiar</button>
+    <button class="copy-btn" data-copy="cmd-unc">copiar</button>
   </div>
 
   <div>
     <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Apenas atualizar servidor em máquina já instalada:</div>
     <div class="code-block" id="cmd-cfg">.\build\deploy_windows.ps1 -ServerIP {{ server_ip or 'IP_DO_SERVIDOR' }} -PubKey "{{ pub_key or 'CHAVE_PUBLICA' }}" -ConfigOnly</div>
-    <button class="copy-btn" onclick="copyCode('cmd-cfg', this)">copiar</button>
+    <button class="copy-btn" data-copy="cmd-cfg">copiar</button>
   </div>
 </div>
 
@@ -133,13 +133,13 @@
   <div style="margin: 14px 0;">
     <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Programa:</div>
     <div class="code-block" id="gpo-prog">powershell.exe</div>
-    <button class="copy-btn" onclick="copyCode('gpo-prog', this)">copiar</button>
+    <button class="copy-btn" data-copy="gpo-prog">copiar</button>
   </div>
 
   <div>
     <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Parâmetros:</div>
     <div class="code-block" id="gpo-args">-ExecutionPolicy Bypass -File "\\servidor\scripts\ubuntudesk\deploy_windows.ps1" -ServerIP {{ server_ip or 'IP_DO_SERVIDOR' }} -PubKey "{{ pub_key or 'CHAVE_PUBLICA' }}" -Silent -Startup</div>
-    <button class="copy-btn" onclick="copyCode('gpo-args', this)">copiar</button>
+    <button class="copy-btn" data-copy="gpo-args">copiar</button>
   </div>
 </div>
 
@@ -153,21 +153,23 @@
   <div>
     <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Nome do arquivo:</div>
     <div class="code-block" id="cmd-rename">ubuntu-desk-host={{ server_ip or 'IP_DO_SERVIDOR' }},key={{ pub_key or 'CHAVE_PUBLICA' }}.exe</div>
-    <button class="copy-btn" onclick="copyCode('cmd-rename', this)">copiar</button>
+    <button class="copy-btn" data-copy="cmd-rename">copiar</button>
   </div>
 </div>
 
-<script>
-function copyCode(id, btn) {
-  const el = document.getElementById(id);
-  const text = el.innerText.trim();
-  navigator.clipboard.writeText(text).then(() => {
+<script nonce="{{ csp_nonce }}">
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('[data-copy]');
+  if (!btn) return;
+  const el = document.getElementById(btn.dataset.copy);
+  if (!el) return;
+  navigator.clipboard.writeText(el.innerText.trim()).then(() => {
     const orig = btn.innerText;
     btn.innerText = 'copiado!';
     btn.style.color = 'var(--green)';
     setTimeout(() => { btn.innerText = orig; btn.style.color = ''; }, 1500);
   });
-}
+});
 </script>
 
 {% endblock %}

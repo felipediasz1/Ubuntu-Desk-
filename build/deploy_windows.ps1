@@ -63,7 +63,7 @@ if ($ConfigOnly) {
     $configStr = "ubuntu-desk-host=$ServerIP"
     if ($PubKey) { $configStr += ",key=$PubKey" }
     if ($Api)    { $configStr += ",api=$Api" }
-    & $AppExe --config "$configStr.exe"
+    & $AppExe --config $configStr
     Write-OK "Configuração aplicada"
     exit 0
 }
@@ -77,7 +77,7 @@ if ($IsInstalled -and -not $Force) {
         $configStr = "ubuntu-desk-host=$ServerIP"
         if ($PubKey) { $configStr += ",key=$PubKey" }
         if ($Api)    { $configStr += ",api=$Api" }
-        & $AppExe --config "$configStr.exe"
+        & $AppExe --config $configStr
         Write-OK "Configuração atualizada"
     }
     exit 0

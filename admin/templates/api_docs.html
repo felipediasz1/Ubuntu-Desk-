@@ -3,7 +3,7 @@
 {% block page_title %}API REST{% endblock %}
 
 {% block content %}
-<style>
+<style nonce="{{ csp_nonce }}">
   .api-section { margin-bottom: 36px; }
   .api-section h2 {
     font-size: 16px; font-weight: 700; color: var(--cyan);
@@ -94,7 +94,7 @@
       <tr><td>Bearer token</td><td>Authorization: Bearer &lt;token&gt;</td><td>30 dias — via POST /api/login</td></tr>
       <tr><td>API Key nomeada</td><td>X-Api-Key: &lt;key&gt;</td><td>Permanente — gerenciado abaixo</td></tr>
     </table>
-    <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button><span class="hl"># Obter Bearer token</span>
+    <pre><button class="copy-btn" class="copy-pre-btn">copiar</button><span class="hl"># Obter Bearer token</span>
 curl -X POST {{ base_url }}/api/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"SUA-SENHA"}'
@@ -113,7 +113,7 @@ curl {{ base_url }}/api/peers \
   <div class="key-manager">
     <div id="create-form">
       <input id="key-name-input" type="text" placeholder="Nome da key (ex: Script CI/CD, Monitoramento)" maxlength="80">
-      <button class="btn btn-cyan" onclick="createKey()">+ Criar Key</button>
+      <button class="btn btn-cyan" id="create-key-btn">+ Criar Key</button>
     </div>
     <div id="new-key-box" class="alert-success">
       <strong>Key criada — copie agora, não será exibida novamente:</strong>
@@ -128,13 +128,13 @@ curl {{ base_url }}/api/peers \
   <h2>Endpoints — Dispositivos</h2>
 
   <div class="endpoint">
-    <div class="endpoint-header" onclick="toggle(this)">
+    <div class="endpoint-header endpoint-toggle">
       <span class="method method-get">GET</span>
       <span class="endpoint-path">/api/peers</span>
       <span class="endpoint-desc">Listar todos os dispositivos</span>
     </div>
     <div class="endpoint-body">
-      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl {{ base_url }}/api/peers \
+      <pre><button class="copy-btn" class="copy-pre-btn">copiar</button>curl {{ base_url }}/api/peers \
   -H "X-Api-Key: ud_..."
 
 <span class="hl"># Resposta</span>
@@ -149,25 +149,25 @@ curl {{ base_url }}/api/peers \
   </div>
 
   <div class="endpoint">
-    <div class="endpoint-header" onclick="toggle(this)">
+    <div class="endpoint-header endpoint-toggle">
       <span class="method method-get">GET</span>
       <span class="endpoint-path">/api/peers/&lt;id&gt;</span>
       <span class="endpoint-desc">Detalhes de um dispositivo</span>
     </div>
     <div class="endpoint-body">
-      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl {{ base_url }}/api/peers/123456789 \
+      <pre><button class="copy-btn" class="copy-pre-btn">copiar</button>curl {{ base_url }}/api/peers/123456789 \
   -H "X-Api-Key: ud_..."</pre>
     </div>
   </div>
 
   <div class="endpoint">
-    <div class="endpoint-header" onclick="toggle(this)">
+    <div class="endpoint-header endpoint-toggle">
       <span class="method method-put">PUT</span>
       <span class="endpoint-path">/api/peers/&lt;id&gt;</span>
       <span class="endpoint-desc">Atualizar nota do dispositivo</span>
     </div>
     <div class="endpoint-body">
-      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl -X PUT {{ base_url }}/api/peers/123456789 \
+      <pre><button class="copy-btn" class="copy-pre-btn">copiar</button>curl -X PUT {{ base_url }}/api/peers/123456789 \
   -H "X-Api-Key: ud_..." \
   -H "Content-Type: application/json" \
   -d '{"note":"Sala de reunião 3"}'</pre>
@@ -175,13 +175,13 @@ curl {{ base_url }}/api/peers \
   </div>
 
   <div class="endpoint">
-    <div class="endpoint-header" onclick="toggle(this)">
+    <div class="endpoint-header endpoint-toggle">
       <span class="method method-delete">DELETE</span>
       <span class="endpoint-path">/api/peers/&lt;id&gt;</span>
       <span class="endpoint-desc">Remover dispositivo do servidor</span>
     </div>
     <div class="endpoint-body">
-      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl -X DELETE {{ base_url }}/api/peers/123456789 \
+      <pre><button class="copy-btn" class="copy-pre-btn">copiar</button>curl -X DELETE {{ base_url }}/api/peers/123456789 \
   -H "X-Api-Key: ud_..."</pre>
     </div>
   </div>
@@ -191,13 +191,13 @@ curl {{ base_url }}/api/peers \
   <h2>Endpoints — Stats &amp; Auditoria</h2>
 
   <div class="endpoint">
-    <div class="endpoint-header" onclick="toggle(this)">
+    <div class="endpoint-header endpoint-toggle">
       <span class="method method-get">GET</span>
       <span class="endpoint-path">/api/stats</span>
       <span class="endpoint-desc">Resumo do sistema</span>
     </div>
     <div class="endpoint-body">
-      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl {{ base_url }}/api/stats -H "X-Api-Key: ud_..."
+      <pre><button class="copy-btn" class="copy-pre-btn">copiar</button>curl {{ base_url }}/api/stats -H "X-Api-Key: ud_..."
 
 <span class="hl"># Resposta</span>
 {
@@ -209,7 +209,7 @@ curl {{ base_url }}/api/peers \
   </div>
 
   <div class="endpoint">
-    <div class="endpoint-header" onclick="toggle(this)">
+    <div class="endpoint-header endpoint-toggle">
       <span class="method method-get">GET</span>
       <span class="endpoint-path">/api/audit</span>
       <span class="endpoint-desc">Listar eventos de auditoria</span>
@@ -222,7 +222,7 @@ curl {{ base_url }}/api/peers \
         <tr><td>limit</td><td>int</td><td><span class="badge-opt">opcional</span></td><td>Máx registros (padrão: 100, max: 500)</td></tr>
         <tr><td>offset</td><td>int</td><td><span class="badge-opt">opcional</span></td><td>Paginação</td></tr>
       </table>
-      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl "{{ base_url }}/api/audit?category=security&limit=50" \
+      <pre><button class="copy-btn" class="copy-pre-btn">copiar</button>curl "{{ base_url }}/api/audit?category=security&limit=50" \
   -H "X-Api-Key: ud_..."</pre>
     </div>
   </div>
@@ -232,7 +232,7 @@ curl {{ base_url }}/api/peers \
   <h2>Endpoints — Gravações</h2>
 
   <div class="endpoint">
-    <div class="endpoint-header" onclick="toggle(this)">
+    <div class="endpoint-header endpoint-toggle">
       <span class="method method-get">GET</span>
       <span class="endpoint-path">/api/recordings</span>
       <span class="endpoint-desc">Listar gravações</span>
@@ -242,19 +242,19 @@ curl {{ base_url }}/api/peers \
         <tr><th>Parâmetro</th><th></th><th>Descrição</th></tr>
         <tr><td>peer</td><td><span class="badge-opt">opcional</span></td><td>Filtrar por peer ID</td></tr>
       </table>
-      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl "{{ base_url }}/api/recordings?peer=123456789" \
+      <pre><button class="copy-btn" class="copy-pre-btn">copiar</button>curl "{{ base_url }}/api/recordings?peer=123456789" \
   -H "X-Api-Key: ud_..."</pre>
     </div>
   </div>
 
   <div class="endpoint">
-    <div class="endpoint-header" onclick="toggle(this)">
+    <div class="endpoint-header endpoint-toggle">
       <span class="method method-delete">DELETE</span>
       <span class="endpoint-path">/api/recordings/&lt;filename&gt;</span>
       <span class="endpoint-desc">Deletar gravação</span>
     </div>
     <div class="endpoint-body">
-      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl -X DELETE "{{ base_url }}/api/recordings/incoming_123_20240101_display0_vp9.webm" \
+      <pre><button class="copy-btn" class="copy-pre-btn">copiar</button>curl -X DELETE "{{ base_url }}/api/recordings/incoming_123_20240101_display0_vp9.webm" \
   -H "X-Api-Key: ud_..."</pre>
     </div>
   </div>
@@ -264,7 +264,7 @@ curl {{ base_url }}/api/peers \
   <h2>Endpoints — Wake-on-LAN &amp; API Keys</h2>
 
   <div class="endpoint">
-    <div class="endpoint-header" onclick="toggle(this)">
+    <div class="endpoint-header endpoint-toggle">
       <span class="method method-post">POST</span>
       <span class="endpoint-path">/api/wol</span>
       <span class="endpoint-desc">Enviar pacote Wake-on-LAN</span>
@@ -275,7 +275,7 @@ curl {{ base_url }}/api/peers \
         <tr><td>mac</td><td><span class="badge-req">obrigatório</span></td><td>Endereço MAC (AA:BB:CC:DD:EE:FF)</td></tr>
         <tr><td>peer_id</td><td><span class="badge-opt">opcional</span></td><td>ID do peer (apenas para auditoria)</td></tr>
       </table>
-      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl -X POST {{ base_url }}/api/wol \
+      <pre><button class="copy-btn" class="copy-pre-btn">copiar</button>curl -X POST {{ base_url }}/api/wol \
   -H "X-Api-Key: ud_..." \
   -H "Content-Type: application/json" \
   -d '{"mac":"AA:BB:CC:DD:EE:FF","peer_id":"123456789"}'</pre>
@@ -283,24 +283,24 @@ curl {{ base_url }}/api/peers \
   </div>
 
   <div class="endpoint">
-    <div class="endpoint-header" onclick="toggle(this)">
+    <div class="endpoint-header endpoint-toggle">
       <span class="method method-get">GET</span>
       <span class="endpoint-path">/api/apikeys</span>
       <span class="endpoint-desc">Listar API keys (sem revelar o valor)</span>
     </div>
     <div class="endpoint-body">
-      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl {{ base_url }}/api/apikeys -H "X-Api-Key: ud_..."</pre>
+      <pre><button class="copy-btn" class="copy-pre-btn">copiar</button>curl {{ base_url }}/api/apikeys -H "X-Api-Key: ud_..."</pre>
     </div>
   </div>
 
   <div class="endpoint">
-    <div class="endpoint-header" onclick="toggle(this)">
+    <div class="endpoint-header endpoint-toggle">
       <span class="method method-post">POST</span>
       <span class="endpoint-path">/api/apikeys</span>
       <span class="endpoint-desc">Criar nova API key</span>
     </div>
     <div class="endpoint-body">
-      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl -X POST {{ base_url }}/api/apikeys \
+      <pre><button class="copy-btn" class="copy-pre-btn">copiar</button>curl -X POST {{ base_url }}/api/apikeys \
   -H "X-Api-Key: ud_..." \
   -H "Content-Type: application/json" \
   -d '{"name":"Script de monitoramento"}'
@@ -311,50 +311,85 @@ curl {{ base_url }}/api/peers \
   </div>
 
   <div class="endpoint">
-    <div class="endpoint-header" onclick="toggle(this)">
+    <div class="endpoint-header endpoint-toggle">
       <span class="method method-delete">DELETE</span>
       <span class="endpoint-path">/api/apikeys/&lt;id&gt;</span>
       <span class="endpoint-desc">Revogar API key</span>
     </div>
     <div class="endpoint-body">
-      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl -X DELETE {{ base_url }}/api/apikeys/1 \
+      <pre><button class="copy-btn" class="copy-pre-btn">copiar</button>curl -X DELETE {{ base_url }}/api/apikeys/1 \
   -H "X-Api-Key: ud_..."</pre>
     </div>
   </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 const BASE = {{ base_url | tojson }};
 
-function toggle(header) {
-  const body = header.nextElementSibling;
-  body.classList.toggle('open');
-}
+// ── Event delegation — sem inline handlers ────────────────────────────────────
+document.addEventListener('click', function(e) {
+  // Toggle endpoint body
+  const toggle = e.target.closest('.endpoint-toggle');
+  if (toggle) {
+    toggle.nextElementSibling.classList.toggle('open');
+    return;
+  }
+  // Copiar bloco <pre>
+  const copyPre = e.target.closest('.copy-pre-btn');
+  if (copyPre) {
+    const pre  = copyPre.parentElement;
+    const text = pre.innerText.replace(/^copiar\n/, '');
+    navigator.clipboard.writeText(text).then(() => {
+      copyPre.textContent = 'copiado!';
+      setTimeout(() => copyPre.textContent = 'copiar', 1500);
+    });
+    return;
+  }
+  // Revogar API key
+  const delBtn = e.target.closest('[data-delete-id]');
+  if (delBtn) {
+    const id   = delBtn.dataset.deleteId;
+    const name = delBtn.dataset.deleteName;
+    if (!confirm(`Revogar key "${name}"?`)) return;
+    fetch('/apiadmin/deletekey/' + id, { method: 'POST', credentials: 'include' })
+      .then(r => { if (r.ok) loadKeys(); });
+    return;
+  }
+  // Criar API key
+  if (e.target.closest('#create-key-btn')) {
+    createKey();
+  }
+});
 
-function copyPre(btn) {
-  const pre = btn.parentElement;
-  const text = pre.innerText.replace(/^copiar\n/, '');
-  navigator.clipboard.writeText(text).then(() => {
-    btn.textContent = 'copiado!';
-    setTimeout(() => btn.textContent = 'copiar', 1500);
-  });
-}
+// Enter no input de nome também cria key
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && e.target.id === 'key-name-input') createKey();
+});
 
 async function loadKeys() {
   const list = document.getElementById('keys-list');
   try {
     const r = await fetch('/apiadmin/listkeys', { credentials: 'include' });
     const d = await r.json();
-    if (!d.keys.length) { list.innerHTML = '<div class="empty-keys">Nenhuma API key criada ainda.</div>'; return; }
-    list.innerHTML = d.keys.map(k => `
-      <div class="key-row" id="key-${k.id}">
-        <div>
-          <div class="key-name">${k.name}</div>
-          <div class="key-meta">Criada em ${k.created_at}${k.last_used ? ' &nbsp;·&nbsp; Última vez: '+k.last_used : ''}</div>
-        </div>
-        <button class="btn btn-ghost" style="padding:6px 14px;font-size:13px;color:var(--red)" onclick="deleteKey(${k.id}, '${k.name}')">Revogar</button>
-      </div>
-    `).join('');
+    if (!d.keys.length) {
+      list.innerHTML = '<div class="empty-keys">Nenhuma API key criada ainda.</div>';
+      return;
+    }
+    list.innerHTML = d.keys.map(k => {
+      const meta = 'Criada em ' + k.created_at + (k.last_used ? ' &nbsp;·&nbsp; Última vez: ' + k.last_used : '');
+      return (
+        '<div class="key-row" id="key-' + k.id + '">' +
+          '<div>' +
+            '<div class="key-name">' + k.name + '</div>' +
+            '<div class="key-meta">' + meta + '</div>' +
+          '</div>' +
+          '<button class="btn btn-ghost" style="padding:6px 14px;font-size:13px;color:var(--red)"' +
+            ' data-delete-id="' + k.id + '" data-delete-name="' + k.name.replace(/"/g, '&quot;') + '">' +
+            'Revogar' +
+          '</button>' +
+        '</div>'
+      );
+    }).join('');
   } catch(e) {
     list.innerHTML = '<div class="empty-keys">Erro ao carregar keys.</div>';
   }
@@ -377,14 +412,6 @@ async function createKey() {
     nameInput.value = '';
     loadKeys();
   }
-}
-
-async function deleteKey(id, name) {
-  if (!confirm(`Revogar key "${name}"?`)) return;
-  const r = await fetch('/apiadmin/deletekey/' + id, {
-    method: 'POST', credentials: 'include',
-  });
-  if (r.ok) loadKeys();
 }
 
 loadKeys();
