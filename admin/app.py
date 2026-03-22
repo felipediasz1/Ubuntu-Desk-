@@ -7,6 +7,7 @@ import sqlite3
 import json
 import os
 import re
+import socket
 import hashlib
 import secrets
 import time
@@ -600,11 +601,20 @@ def _get_api_db():
             data TEXT    NOT NULL DEFAULT '{}'
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT    NOT NULL,
+            key        TEXT    UNIQUE NOT NULL,
+            created_at REAL    NOT NULL,
+            last_used  REAL
+        )
+    """)
     conn.commit()
     return conn
 
 def _api_token_valid(token: str) -> bool:
-    """Token expira após 30 dias."""
+    """Session token expira após 30 dias."""
     try:
         conn = _get_api_db()
         row = conn.execute(
@@ -617,15 +627,31 @@ def _api_token_valid(token: str) -> bool:
     except Exception:
         return False
 
+def _api_key_valid(key: str) -> bool:
+    """Named API key — permanente até ser revogada."""
+    try:
+        conn = _get_api_db()
+        row = conn.execute("SELECT id FROM api_keys WHERE key = ?", (key,)).fetchone()
+        if row:
+            conn.execute("UPDATE api_keys SET last_used = ? WHERE key = ?", (time.time(), key))
+            conn.commit()
+        conn.close()
+        return bool(row)
+    except Exception:
+        return False
+
 def api_auth_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
+        # Bearer token (session, expira 30d)
         auth = request.headers.get("Authorization", "")
-        if not auth.startswith("Bearer "):
-            return jsonify({"error": "Unauthorized"}), 401
-        if not _api_token_valid(auth[7:]):
-            return jsonify({"error": "Unauthorized"}), 401
-        return f(*args, **kwargs)
+        if auth.startswith("Bearer ") and _api_token_valid(auth[7:]):
+            return f(*args, **kwargs)
+        # X-Api-Key (named, permanente)
+        api_key = request.headers.get("X-Api-Key", "")
+        if api_key and _api_key_valid(api_key):
+            return f(*args, **kwargs)
+        return jsonify({"error": "Unauthorized"}), 401
     return decorated
 
 @app.route("/api/login-options", methods=["GET"])
@@ -714,6 +740,314 @@ def api_ab():
         conn.commit()
         conn.close()
         return "", 200
+
+# ── REST API — Peers ──────────────────────────────────────────────────────────
+
+@app.route("/api/peers", methods=["GET"])
+@api_auth_required
+def api_peers_list():
+    rows = query("SELECT id, info, status, created_at, note FROM peer ORDER BY created_at DESC")
+    peers = []
+    for r in rows:
+        info = parse_info(r["info"])
+        peers.append({
+            "id":         r["id"],
+            "hostname":   info.get("hostname", ""),
+            "os":         info.get("os", ""),
+            "cpu":        info.get("cpu", ""),
+            "memory":     info.get("memory", ""),
+            "username":   info.get("username", ""),
+            "status":     r["status"],
+            "online":     r["status"] == 1,
+            "created_at": r["created_at"],
+            "note":       r["note"] or "",
+        })
+    return jsonify({"peers": peers, "total": len(peers)})
+
+@app.route("/api/peers/<peer_id>", methods=["GET"])
+@api_auth_required
+def api_peer_get(peer_id):
+    rows = query("SELECT id, info, status, created_at, note FROM peer WHERE id = ?", (peer_id,))
+    if not rows:
+        return jsonify({"error": "Not found"}), 404
+    r = rows[0]
+    info = parse_info(r["info"])
+    return jsonify({
+        "id":         r["id"],
+        "hostname":   info.get("hostname", ""),
+        "os":         info.get("os", ""),
+        "cpu":        info.get("cpu", ""),
+        "memory":     info.get("memory", ""),
+        "username":   info.get("username", ""),
+        "status":     r["status"],
+        "online":     r["status"] == 1,
+        "created_at": r["created_at"],
+        "note":       r["note"] or "",
+        "info":       info,
+    })
+
+@app.route("/api/peers/<peer_id>", methods=["PUT"])
+@api_auth_required
+def api_peer_update(peer_id):
+    body = request.get_json(silent=True) or {}
+    note = str(body.get("note", ""))[:300]
+    db = get_db()
+    if db:
+        db.execute("UPDATE peer SET note=? WHERE id=?", (note, peer_id))
+        db.commit()
+    audit("nota_atualizada", f"id={peer_id} (API)")
+    return jsonify({"ok": True})
+
+@app.route("/api/peers/<peer_id>", methods=["DELETE"])
+@api_auth_required
+def api_peer_delete(peer_id):
+    db = get_db()
+    if db:
+        db.execute("DELETE FROM peer WHERE id=?", (peer_id,))
+        db.commit()
+    audit("peer_deletado", f"id={peer_id}", category="admin")
+    return jsonify({"ok": True})
+
+# ── REST API — Stats ──────────────────────────────────────────────────────────
+
+@app.route("/api/stats", methods=["GET"])
+@api_auth_required
+def api_stats():
+    rows = query("SELECT status FROM peer")
+    total  = len(rows)
+    online = sum(1 for r in rows if r["status"] == 1)
+    try:
+        conn = _get_audit_db()
+        today_str    = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        events_today = conn.execute(
+            "SELECT COUNT(*) FROM audit_log WHERE ts LIKE ?", (today_str + "%",)
+        ).fetchone()[0]
+        failures = conn.execute(
+            "SELECT COUNT(*) FROM audit_log WHERE action LIKE '%falha%' OR action LIKE '%bloqueado%'"
+        ).fetchone()[0]
+        conn.close()
+    except Exception:
+        events_today = failures = 0
+    recordings_count = len(_list_recordings())
+    return jsonify({
+        "peers":      {"total": total, "online": online, "offline": total - online},
+        "audit":      {"events_today": events_today, "login_failures": failures},
+        "recordings": {"count": recordings_count},
+    })
+
+# ── REST API — Audit ──────────────────────────────────────────────────────────
+
+@app.route("/api/audit", methods=["GET"])
+@api_auth_required
+def api_audit_list():
+    cat_filter = request.args.get("category", "").strip()
+    search     = request.args.get("search", "").strip()
+    limit      = min(int(request.args.get("limit", 100) or 100), 500)
+    offset     = int(request.args.get("offset", 0) or 0)
+    where_clauses, params = [], []
+    if cat_filter:
+        where_clauses.append("category = ?")
+        params.append(cat_filter)
+    if search:
+        where_clauses.append("(action LIKE ? OR detail LIKE ?)")
+        like = f"%{search}%"
+        params += [like, like]
+    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+    try:
+        conn   = _get_audit_db()
+        total  = conn.execute(f"SELECT COUNT(*) FROM audit_log {where_sql}", params).fetchone()[0]
+        rows   = conn.execute(
+            f"SELECT ts, action, detail, ip, category FROM audit_log {where_sql} ORDER BY id DESC LIMIT ? OFFSET ?",
+            params + [limit, offset]
+        ).fetchall()
+        conn.close()
+        events = [{"ts": r[0], "action": r[1], "detail": r[2] or "", "ip": r[3] or "", "category": r[4] or "system"} for r in rows]
+    except Exception:
+        events, total = [], 0
+    return jsonify({"events": events, "total": total, "limit": limit, "offset": offset})
+
+# ── REST API — Recordings ─────────────────────────────────────────────────────
+
+@app.route("/api/recordings", methods=["GET"])
+@api_auth_required
+def api_recordings_list_endpoint():
+    recs = _list_recordings()
+    peer_filter = request.args.get("peer", "").strip()
+    if peer_filter:
+        recs = [r for r in recs if peer_filter.lower() in r["peer_id"].lower()]
+    return jsonify({"recordings": recs, "total": len(recs)})
+
+@app.route("/api/recordings/<path:filename>", methods=["DELETE"])
+@api_auth_required
+def api_recording_delete(filename):
+    safe  = os.path.basename(filename)
+    fpath = os.path.join(RECORDING_DIR, safe)
+    if not os.path.isfile(fpath):
+        return jsonify({"error": "Not found"}), 404
+    os.remove(fpath)
+    audit("gravacao_deletada", f"arquivo={safe}", category="admin")
+    return jsonify({"ok": True})
+
+# ── REST API — Wake-on-LAN ────────────────────────────────────────────────────
+
+def _send_wol_packet(mac: str) -> bool:
+    mac_clean = mac.replace(":", "").replace("-", "").replace(".", "")
+    if len(mac_clean) != 12:
+        return False
+    try:
+        mac_bytes = bytes.fromhex(mac_clean)
+    except ValueError:
+        return False
+    magic = b"\xff" * 6 + mac_bytes * 16
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            s.sendto(magic, ("<broadcast>", 9))
+        return True
+    except Exception:
+        return False
+
+@app.route("/api/wol", methods=["POST"])
+@api_auth_required
+def api_wol():
+    body    = request.get_json(silent=True) or {}
+    mac     = body.get("mac", "").strip()
+    peer_id = body.get("peer_id", "").strip()
+    if not mac:
+        return jsonify({"error": "mac is required"}), 400
+    if not _send_wol_packet(mac):
+        return jsonify({"error": "Invalid MAC address format"}), 400
+    audit("wol_enviado", f"peer={peer_id} mac={mac}", category="access")
+    return jsonify({"ok": True, "mac": mac})
+
+# ── REST API — API Keys ───────────────────────────────────────────────────────
+
+@app.route("/api/apikeys", methods=["GET"])
+@api_auth_required
+def api_apikeys_list():
+    try:
+        conn = _get_api_db()
+        rows = conn.execute(
+            "SELECT id, name, created_at, last_used FROM api_keys ORDER BY created_at DESC"
+        ).fetchall()
+        conn.close()
+        keys = [{
+            "id":        r[0],
+            "name":      r[1],
+            "created_at": datetime.fromtimestamp(r[2], tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            "last_used":  datetime.fromtimestamp(r[3], tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S") if r[3] else None,
+        } for r in rows]
+    except Exception:
+        keys = []
+    return jsonify({"keys": keys})
+
+@app.route("/api/apikeys", methods=["POST"])
+@api_auth_required
+def api_apikeys_create():
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("name", "")).strip()[:80]
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+    key = "ud_" + secrets.token_hex(24)
+    try:
+        conn = _get_api_db()
+        conn.execute(
+            "INSERT INTO api_keys (name, key, created_at) VALUES (?, ?, ?)",
+            (name, key, time.time()),
+        )
+        conn.commit()
+        key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    audit("apikey_criada", f"name={name}", category="admin")
+    return jsonify({"id": key_id, "name": name, "key": key}), 201
+
+@app.route("/api/apikeys/<int:key_id>", methods=["DELETE"])
+@api_auth_required
+def api_apikeys_delete(key_id):
+    try:
+        conn = _get_api_db()
+        row  = conn.execute("SELECT name FROM api_keys WHERE id = ?", (key_id,)).fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"error": "Not found"}), 404
+        conn.execute("DELETE FROM api_keys WHERE id = ?", (key_id,))
+        conn.commit()
+        conn.close()
+        audit("apikey_revogada", f"id={key_id} name={row[0]}", category="admin")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True})
+
+# ── Admin UI — gerenciamento de API keys via sessão ──────────────────────────
+
+@app.route("/apiadmin/createkey", methods=["POST"])
+@login_required
+def apiadmin_createkey():
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("name", "")).strip()[:80]
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+    key = "ud_" + secrets.token_hex(24)
+    try:
+        conn = _get_api_db()
+        conn.execute(
+            "INSERT INTO api_keys (name, key, created_at) VALUES (?, ?, ?)",
+            (name, key, time.time()),
+        )
+        conn.commit()
+        key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    audit("apikey_criada", f"name={name}", category="admin")
+    return jsonify({"id": key_id, "name": name, "key": key}), 201
+
+@app.route("/apiadmin/deletekey/<int:key_id>", methods=["POST"])
+@login_required
+def apiadmin_deletekey(key_id):
+    try:
+        conn = _get_api_db()
+        row  = conn.execute("SELECT name FROM api_keys WHERE id = ?", (key_id,)).fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"error": "Not found"}), 404
+        conn.execute("DELETE FROM api_keys WHERE id = ?", (key_id,))
+        conn.commit()
+        conn.close()
+        audit("apikey_revogada", f"id={key_id} name={row[0]}", category="admin")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True})
+
+@app.route("/apiadmin/listkeys")
+@login_required
+def apiadmin_listkeys():
+    try:
+        conn = _get_api_db()
+        rows = conn.execute(
+            "SELECT id, name, created_at, last_used FROM api_keys ORDER BY created_at DESC"
+        ).fetchall()
+        conn.close()
+        keys = [{
+            "id":        r[0],
+            "name":      r[1],
+            "created_at": datetime.fromtimestamp(r[2], tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            "last_used":  datetime.fromtimestamp(r[3], tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S") if r[3] else None,
+        } for r in rows]
+    except Exception:
+        keys = []
+    return jsonify({"keys": keys})
+
+# ── Página de documentação da API ─────────────────────────────────────────────
+
+@app.route("/apidocs")
+@login_required
+def apidocs():
+    server_ip, _ = _read_client_config()
+    base_url = f"http://{server_ip}:{PORT}" if server_ip else f"http://SEU-SERVIDOR:{PORT}"
+    return render_template("api_docs.html", base_url=base_url)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT, debug=False)

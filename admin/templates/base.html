@@ -245,6 +245,9 @@
       <a href="{{ url_for('deploy') }}" class="nav-item {% if request.endpoint == 'deploy' %}active{% endif %}">
         ⬇ &nbsp;Deploy
       </a>
+      <a href="{{ url_for('apidocs') }}" class="nav-item {% if request.endpoint == 'apidocs' %}active{% endif %}">
+        ⚡ &nbsp;API REST
+      </a>
     </div>
     <div class="sidebar-footer">
       <a href="{{ url_for('logout') }}">⎋ Sair</a>

@@ -1,0 +1,392 @@
+{% extends "base.html" %}
+{% block title %}API REST — Ubuntu Desk Admin{% endblock %}
+{% block page_title %}API REST{% endblock %}
+
+{% block content %}
+<style>
+  .api-section { margin-bottom: 36px; }
+  .api-section h2 {
+    font-size: 16px; font-weight: 700; color: var(--cyan);
+    margin-bottom: 16px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .endpoint {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 10px; margin-bottom: 12px; overflow: hidden;
+  }
+  .endpoint-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; cursor: pointer; user-select: none;
+  }
+  .endpoint-header:hover { background: rgba(255,255,255,0.02); }
+  .method {
+    font-size: 11px; font-weight: 700; padding: 3px 9px;
+    border-radius: 5px; min-width: 54px; text-align: center; flex-shrink: 0;
+  }
+  .method-get    { background: rgba(74,222,128,0.15); color: #4ADE80; }
+  .method-post   { background: rgba(6,182,212,0.15);  color: var(--cyan); }
+  .method-put    { background: rgba(251,191,36,0.15); color: #FCD34D; }
+  .method-delete { background: rgba(248,113,113,0.15); color: var(--red); }
+  .endpoint-path {
+    font-family: 'Courier New', monospace; font-size: 13px;
+    color: var(--text); flex: 1;
+  }
+  .endpoint-desc { color: var(--muted); font-size: 13px; }
+  .endpoint-body { padding: 0 16px 16px; display: none; }
+  .endpoint-body.open { display: block; }
+  pre {
+    background: #0A0F1E; border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 16px; overflow-x: auto;
+    font-size: 12px; line-height: 1.6; color: #94A3B8;
+    margin-top: 10px; position: relative;
+  }
+  pre .hl { color: var(--cyan); }
+  .copy-btn {
+    position: absolute; top: 8px; right: 8px;
+    background: var(--bg3); border: none; color: var(--muted);
+    padding: 3px 10px; border-radius: 5px; cursor: pointer;
+    font-size: 11px; transition: color 0.15s;
+  }
+  .copy-btn:hover { color: var(--text); }
+  .param-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+  .param-table th { color: var(--muted); font-weight: 600; text-align: left; padding: 6px 10px; font-size: 11px; text-transform: uppercase; }
+  .param-table td { padding: 6px 10px; border-top: 1px solid var(--border); }
+  .param-table td:first-child { font-family: monospace; color: var(--cyan); }
+  .param-table td:nth-child(2) { color: var(--muted); font-size: 12px; }
+  .badge-req { font-size: 10px; background: rgba(248,113,113,0.15); color: var(--red); padding: 1px 6px; border-radius: 4px; }
+  .badge-opt { font-size: 10px; background: rgba(148,163,184,0.1); color: var(--muted); padding: 1px 6px; border-radius: 4px; }
+
+  /* API Key manager */
+  .key-manager { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .key-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .key-row:last-child { border-bottom: none; }
+  .key-name { font-weight: 600; flex: 1; }
+  .key-meta { color: var(--muted); font-size: 12px; }
+  .key-value {
+    font-family: monospace; font-size: 12px; background: #0A0F1E;
+    border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px;
+    color: var(--cyan); word-break: break-all; margin-top: 10px;
+  }
+  #create-form { display: flex; gap: 10px; margin-bottom: 20px; }
+  #key-name-input {
+    flex: 1; background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 14px; color: var(--text); font-size: 14px;
+    outline: none;
+  }
+  #key-name-input:focus { border-color: var(--cyan); }
+  #new-key-box { display: none; }
+  .alert-success {
+    background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.3);
+    color: #4ADE80; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;
+  }
+  #keys-list .empty-keys { color: var(--muted); text-align: center; padding: 24px 0; }
+</style>
+
+<!-- Auth info -->
+<div class="api-section">
+  <h2>Autenticação</h2>
+  <div class="card" style="margin-bottom:12px">
+    <p style="color:var(--muted);margin-bottom:12px;font-size:13px">
+      Todos os endpoints abaixo exigem autenticação. Dois métodos suportados:
+    </p>
+    <table class="param-table">
+      <tr><th>Método</th><th>Header</th><th>Validade</th></tr>
+      <tr><td>Bearer token</td><td>Authorization: Bearer &lt;token&gt;</td><td>30 dias — via POST /api/login</td></tr>
+      <tr><td>API Key nomeada</td><td>X-Api-Key: &lt;key&gt;</td><td>Permanente — gerenciado abaixo</td></tr>
+    </table>
+    <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button><span class="hl"># Obter Bearer token</span>
+curl -X POST {{ base_url }}/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"SUA-SENHA"}'
+
+<span class="hl"># Usar em requisições</span>
+curl {{ base_url }}/api/peers \
+  -H "Authorization: Bearer TOKEN" \
+  <span class="hl"># ou</span>
+  -H "X-Api-Key: ud_..."</pre>
+  </div>
+</div>
+
+<!-- API Key manager -->
+<div class="api-section">
+  <h2>API Keys</h2>
+  <div class="key-manager">
+    <div id="create-form">
+      <input id="key-name-input" type="text" placeholder="Nome da key (ex: Script CI/CD, Monitoramento)" maxlength="80">
+      <button class="btn btn-cyan" onclick="createKey()">+ Criar Key</button>
+    </div>
+    <div id="new-key-box" class="alert-success">
+      <strong>Key criada — copie agora, não será exibida novamente:</strong>
+      <div class="key-value" id="new-key-value"></div>
+    </div>
+    <div id="keys-list"><div class="empty-keys">Carregando...</div></div>
+  </div>
+</div>
+
+<!-- Endpoints -->
+<div class="api-section">
+  <h2>Endpoints — Dispositivos</h2>
+
+  <div class="endpoint">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/api/peers</span>
+      <span class="endpoint-desc">Listar todos os dispositivos</span>
+    </div>
+    <div class="endpoint-body">
+      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl {{ base_url }}/api/peers \
+  -H "X-Api-Key: ud_..."
+
+<span class="hl"># Resposta</span>
+{
+  "total": 5,
+  "peers": [
+    { "id": "123456789", "hostname": "PC-ESCRITORIO", "os": "Windows 11",
+      "username": "joao", "online": true, "note": "", "created_at": "..." }
+  ]
+}</pre>
+    </div>
+  </div>
+
+  <div class="endpoint">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/api/peers/&lt;id&gt;</span>
+      <span class="endpoint-desc">Detalhes de um dispositivo</span>
+    </div>
+    <div class="endpoint-body">
+      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl {{ base_url }}/api/peers/123456789 \
+  -H "X-Api-Key: ud_..."</pre>
+    </div>
+  </div>
+
+  <div class="endpoint">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-put">PUT</span>
+      <span class="endpoint-path">/api/peers/&lt;id&gt;</span>
+      <span class="endpoint-desc">Atualizar nota do dispositivo</span>
+    </div>
+    <div class="endpoint-body">
+      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl -X PUT {{ base_url }}/api/peers/123456789 \
+  -H "X-Api-Key: ud_..." \
+  -H "Content-Type: application/json" \
+  -d '{"note":"Sala de reunião 3"}'</pre>
+    </div>
+  </div>
+
+  <div class="endpoint">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-delete">DELETE</span>
+      <span class="endpoint-path">/api/peers/&lt;id&gt;</span>
+      <span class="endpoint-desc">Remover dispositivo do servidor</span>
+    </div>
+    <div class="endpoint-body">
+      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl -X DELETE {{ base_url }}/api/peers/123456789 \
+  -H "X-Api-Key: ud_..."</pre>
+    </div>
+  </div>
+</div>
+
+<div class="api-section">
+  <h2>Endpoints — Stats &amp; Auditoria</h2>
+
+  <div class="endpoint">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/api/stats</span>
+      <span class="endpoint-desc">Resumo do sistema</span>
+    </div>
+    <div class="endpoint-body">
+      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl {{ base_url }}/api/stats -H "X-Api-Key: ud_..."
+
+<span class="hl"># Resposta</span>
+{
+  "peers":      { "total": 10, "online": 3, "offline": 7 },
+  "audit":      { "events_today": 24, "login_failures": 1 },
+  "recordings": { "count": 5 }
+}</pre>
+    </div>
+  </div>
+
+  <div class="endpoint">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/api/audit</span>
+      <span class="endpoint-desc">Listar eventos de auditoria</span>
+    </div>
+    <div class="endpoint-body">
+      <table class="param-table">
+        <tr><th>Parâmetro</th><th>Tipo</th><th></th><th>Descrição</th></tr>
+        <tr><td>category</td><td>string</td><td><span class="badge-opt">opcional</span></td><td>security | access | admin | system</td></tr>
+        <tr><td>search</td><td>string</td><td><span class="badge-opt">opcional</span></td><td>Busca livre em action/detail</td></tr>
+        <tr><td>limit</td><td>int</td><td><span class="badge-opt">opcional</span></td><td>Máx registros (padrão: 100, max: 500)</td></tr>
+        <tr><td>offset</td><td>int</td><td><span class="badge-opt">opcional</span></td><td>Paginação</td></tr>
+      </table>
+      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl "{{ base_url }}/api/audit?category=security&limit=50" \
+  -H "X-Api-Key: ud_..."</pre>
+    </div>
+  </div>
+</div>
+
+<div class="api-section">
+  <h2>Endpoints — Gravações</h2>
+
+  <div class="endpoint">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/api/recordings</span>
+      <span class="endpoint-desc">Listar gravações</span>
+    </div>
+    <div class="endpoint-body">
+      <table class="param-table">
+        <tr><th>Parâmetro</th><th></th><th>Descrição</th></tr>
+        <tr><td>peer</td><td><span class="badge-opt">opcional</span></td><td>Filtrar por peer ID</td></tr>
+      </table>
+      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl "{{ base_url }}/api/recordings?peer=123456789" \
+  -H "X-Api-Key: ud_..."</pre>
+    </div>
+  </div>
+
+  <div class="endpoint">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-delete">DELETE</span>
+      <span class="endpoint-path">/api/recordings/&lt;filename&gt;</span>
+      <span class="endpoint-desc">Deletar gravação</span>
+    </div>
+    <div class="endpoint-body">
+      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl -X DELETE "{{ base_url }}/api/recordings/incoming_123_20240101_display0_vp9.webm" \
+  -H "X-Api-Key: ud_..."</pre>
+    </div>
+  </div>
+</div>
+
+<div class="api-section">
+  <h2>Endpoints — Wake-on-LAN &amp; API Keys</h2>
+
+  <div class="endpoint">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/api/wol</span>
+      <span class="endpoint-desc">Enviar pacote Wake-on-LAN</span>
+    </div>
+    <div class="endpoint-body">
+      <table class="param-table">
+        <tr><th>Campo</th><th></th><th>Descrição</th></tr>
+        <tr><td>mac</td><td><span class="badge-req">obrigatório</span></td><td>Endereço MAC (AA:BB:CC:DD:EE:FF)</td></tr>
+        <tr><td>peer_id</td><td><span class="badge-opt">opcional</span></td><td>ID do peer (apenas para auditoria)</td></tr>
+      </table>
+      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl -X POST {{ base_url }}/api/wol \
+  -H "X-Api-Key: ud_..." \
+  -H "Content-Type: application/json" \
+  -d '{"mac":"AA:BB:CC:DD:EE:FF","peer_id":"123456789"}'</pre>
+    </div>
+  </div>
+
+  <div class="endpoint">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/api/apikeys</span>
+      <span class="endpoint-desc">Listar API keys (sem revelar o valor)</span>
+    </div>
+    <div class="endpoint-body">
+      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl {{ base_url }}/api/apikeys -H "X-Api-Key: ud_..."</pre>
+    </div>
+  </div>
+
+  <div class="endpoint">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/api/apikeys</span>
+      <span class="endpoint-desc">Criar nova API key</span>
+    </div>
+    <div class="endpoint-body">
+      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl -X POST {{ base_url }}/api/apikeys \
+  -H "X-Api-Key: ud_..." \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Script de monitoramento"}'
+
+<span class="hl"># Resposta — salve a key, não será exibida novamente</span>
+{ "id": 1, "name": "Script de monitoramento", "key": "ud_abc123..." }</pre>
+    </div>
+  </div>
+
+  <div class="endpoint">
+    <div class="endpoint-header" onclick="toggle(this)">
+      <span class="method method-delete">DELETE</span>
+      <span class="endpoint-path">/api/apikeys/&lt;id&gt;</span>
+      <span class="endpoint-desc">Revogar API key</span>
+    </div>
+    <div class="endpoint-body">
+      <pre><button class="copy-btn" onclick="copyPre(this)">copiar</button>curl -X DELETE {{ base_url }}/api/apikeys/1 \
+  -H "X-Api-Key: ud_..."</pre>
+    </div>
+  </div>
+</div>
+
+<script>
+const BASE = {{ base_url | tojson }};
+
+function toggle(header) {
+  const body = header.nextElementSibling;
+  body.classList.toggle('open');
+}
+
+function copyPre(btn) {
+  const pre = btn.parentElement;
+  const text = pre.innerText.replace(/^copiar\n/, '');
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'copiado!';
+    setTimeout(() => btn.textContent = 'copiar', 1500);
+  });
+}
+
+async function loadKeys() {
+  const list = document.getElementById('keys-list');
+  try {
+    const r = await fetch('/apiadmin/listkeys', { credentials: 'include' });
+    const d = await r.json();
+    if (!d.keys.length) { list.innerHTML = '<div class="empty-keys">Nenhuma API key criada ainda.</div>'; return; }
+    list.innerHTML = d.keys.map(k => `
+      <div class="key-row" id="key-${k.id}">
+        <div>
+          <div class="key-name">${k.name}</div>
+          <div class="key-meta">Criada em ${k.created_at}${k.last_used ? ' &nbsp;·&nbsp; Última vez: '+k.last_used : ''}</div>
+        </div>
+        <button class="btn btn-ghost" style="padding:6px 14px;font-size:13px;color:var(--red)" onclick="deleteKey(${k.id}, '${k.name}')">Revogar</button>
+      </div>
+    `).join('');
+  } catch(e) {
+    list.innerHTML = '<div class="empty-keys">Erro ao carregar keys.</div>';
+  }
+}
+
+async function createKey() {
+  const nameInput = document.getElementById('key-name-input');
+  const name = nameInput.value.trim();
+  if (!name) { nameInput.focus(); return; }
+  const r = await fetch('/apiadmin/createkey', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+    credentials: 'include',
+  });
+  const d = await r.json();
+  if (d.key) {
+    document.getElementById('new-key-value').textContent = d.key;
+    document.getElementById('new-key-box').style.display = 'block';
+    nameInput.value = '';
+    loadKeys();
+  }
+}
+
+async function deleteKey(id, name) {
+  if (!confirm(`Revogar key "${name}"?`)) return;
+  const r = await fetch('/apiadmin/deletekey/' + id, {
+    method: 'POST', credentials: 'include',
+  });
+  if (r.ok) loadKeys();
+}
+
+loadKeys();
+</script>
+{% endblock %}
