@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}Deploy em Massa — Ubuntu Desk Admin{% endblock %}
+{% block page_title %}Deploy em Massa{% endblock %}
+
+{% block content %}
+
+<style>
+  .code-block {
+    background: #0F172A;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: #A5F3FC;
+    white-space: pre-wrap;
+    word-break: break-all;
+    position: relative;
+  }
+  .copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    background: var(--bg3);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: -apple-system, sans-serif;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .copy-btn:hover { color: var(--text); border-color: var(--cyan); }
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+  }
+</style>
+
+<!-- Config atual -->
+<div class="stat-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
+  <div class="stat-card" style="text-align: left;">
+    <div class="lbl" style="margin-bottom: 6px;">Servidor (hbbs)</div>
+    <div style="font-family: monospace; font-size: 15px; color: var(--cyan);">
+      {{ server_ip or '— não configurado —' }}
+    </div>
+  </div>
+  <div class="stat-card" style="text-align: left;">
+    <div class="lbl" style="margin-bottom: 6px;">Chave pública (RS_PUB_KEY)</div>
+    <div style="font-family: monospace; font-size: 12px; color: var(--cyan); word-break: break-all;">
+      {{ pub_key or '— não configurada —' }}
+    </div>
+  </div>
+  <div class="stat-card" style="text-align: left;">
+    <div class="lbl" style="margin-bottom: 6px;">Painel admin</div>
+    <div style="font-family: monospace; font-size: 13px; color: var(--cyan);">
+      {{ api_url or '— não disponível —' }}
+    </div>
+  </div>
+</div>
+
+{% if not server_ip %}
+<div class="alert alert-warn" style="margin-bottom: 24px;">
+  Servidor não detectado automaticamente. Edite <code>client/libs/hbb_common/src/config.rs</code> e defina <code>RENDEZVOUS_SERVERS</code> e <code>RS_PUB_KEY</code>.
+</div>
+{% endif %}
+
+<!-- Seção 1: Instalação silenciosa -->
+<div class="card">
+  <div class="section-title">1. Instalação Silenciosa (Windows)</div>
+  <p style="color: var(--muted); font-size: 13px; margin-bottom: 14px;">
+    Execute o instalador sem janelas. O servidor é configurado automaticamente no cliente durante a instalação.
+  </p>
+
+  <div style="margin-bottom: 14px;">
+    <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Comando completo com servidor pré-configurado:</div>
+    <div class="code-block" id="cmd-silent">ubuntu-desk-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SERVER={{ server_ip or 'IP_DO_SERVIDOR' }} /KEY={{ pub_key or 'CHAVE_PUBLICA' }}</div>
+    <button class="copy-btn" onclick="copyCode('cmd-silent', this)">copiar</button>
+  </div>
+
+  <div>
+    <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Mínimo (sem configuração de servidor):</div>
+    <div class="code-block" id="cmd-min">ubuntu-desk-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART</div>
+    <button class="copy-btn" onclick="copyCode('cmd-min', this)">copiar</button>
+  </div>
+</div>
+
+<!-- Seção 2: Script PowerShell de deploy -->
+<div class="card">
+  <div class="section-title">2. Script PowerShell — Deploy em Massa</div>
+  <p style="color: var(--muted); font-size: 13px; margin-bottom: 14px;">
+    Use <code>build\deploy_windows.ps1</code> para automatizar o deploy em múltiplas máquinas. Suporte a caminho UNC (\\servidor\share).
+  </p>
+
+  <div style="margin-bottom: 14px;">
+    <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Deploy local silencioso:</div>
+    <div class="code-block" id="cmd-ps1">.\build\deploy_windows.ps1 -ServerIP {{ server_ip or 'IP_DO_SERVIDOR' }} -PubKey "{{ pub_key or 'CHAVE_PUBLICA' }}" -Silent</div>
+    <button class="copy-btn" onclick="copyCode('cmd-ps1', this)">copiar</button>
+  </div>
+
+  <div style="margin-bottom: 14px;">
+    <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Deploy via UNC com startup automático:</div>
+    <div class="code-block" id="cmd-unc">\\servidor\share\deploy_windows.ps1 -InstallerPath \\servidor\share\ubuntu-desk-setup.exe -ServerIP {{ server_ip or 'IP_DO_SERVIDOR' }} -PubKey "{{ pub_key or 'CHAVE_PUBLICA' }}" -Silent -Startup</div>
+    <button class="copy-btn" onclick="copyCode('cmd-unc', this)">copiar</button>
+  </div>
+
+  <div>
+    <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Apenas atualizar servidor em máquina já instalada:</div>
+    <div class="code-block" id="cmd-cfg">.\build\deploy_windows.ps1 -ServerIP {{ server_ip or 'IP_DO_SERVIDOR' }} -PubKey "{{ pub_key or 'CHAVE_PUBLICA' }}" -ConfigOnly</div>
+    <button class="copy-btn" onclick="copyCode('cmd-cfg', this)">copiar</button>
+  </div>
+</div>
+
+<!-- Seção 3: GPO -->
+<div class="card">
+  <div class="section-title">3. Group Policy Object (GPO)</div>
+  <p style="color: var(--muted); font-size: 13px; margin-bottom: 14px;">
+    Configure um GPO de Inicialização de Computador para instalar automaticamente em todas as máquinas do domínio.
+  </p>
+
+  <ol style="color: var(--text); font-size: 13px; line-height: 2; padding-left: 20px;">
+    <li>Copie <code>installer\Output\ubuntu-desk-setup.exe</code> e <code>build\deploy_windows.ps1</code> para um compartilhamento de rede (ex: <code>\\ad\SYSVOL\scripts\ubuntudesk\</code>)</li>
+    <li>Abra <strong>Gerenciamento de Política de Grupo</strong> → crie/edite um GPO para a OU desejada</li>
+    <li>Vá em: <code>Configuração do Computador → Configurações do Windows → Scripts → Inicialização</code></li>
+    <li>Clique em <strong>Adicionar</strong> e configure:</li>
+  </ol>
+
+  <div style="margin: 14px 0;">
+    <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Programa:</div>
+    <div class="code-block" id="gpo-prog">powershell.exe</div>
+    <button class="copy-btn" onclick="copyCode('gpo-prog', this)">copiar</button>
+  </div>
+
+  <div>
+    <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Parâmetros:</div>
+    <div class="code-block" id="gpo-args">-ExecutionPolicy Bypass -File "\\servidor\scripts\ubuntudesk\deploy_windows.ps1" -ServerIP {{ server_ip or 'IP_DO_SERVIDOR' }} -PubKey "{{ pub_key or 'CHAVE_PUBLICA' }}" -Silent -Startup</div>
+    <button class="copy-btn" onclick="copyCode('gpo-args', this)">copiar</button>
+  </div>
+</div>
+
+<!-- Seção 4: Nome do exe com servidor embutido -->
+<div class="card">
+  <div class="section-title">4. Executável com servidor no nome (sem instalador)</div>
+  <p style="color: var(--muted); font-size: 13px; margin-bottom: 14px;">
+    Renomear o executável com o padrão <code>ubuntu-desk-host=IP,key=CHAVE.exe</code> configura automaticamente o servidor ao ser executado pela primeira vez. Útil para distribuição direta sem instalador.
+  </p>
+
+  <div>
+    <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">Nome do arquivo:</div>
+    <div class="code-block" id="cmd-rename">ubuntu-desk-host={{ server_ip or 'IP_DO_SERVIDOR' }},key={{ pub_key or 'CHAVE_PUBLICA' }}.exe</div>
+    <button class="copy-btn" onclick="copyCode('cmd-rename', this)">copiar</button>
+  </div>
+</div>
+
+<script>
+function copyCode(id, btn) {
+  const el = document.getElementById(id);
+  const text = el.innerText.trim();
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.innerText;
+    btn.innerText = 'copiado!';
+    btn.style.color = 'var(--green)';
+    setTimeout(() => { btn.innerText = orig; btn.style.color = ''; }, 1500);
+  });
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Auditoria — Ubuntu Desk Admin{% endblock %}
+{% block page_title %}Log de Auditoria{% endblock %}
+
+{% block content %}
+
+<!-- Stats cards -->
+<div class="stat-grid" style="grid-template-columns: repeat(4, 1fr);">
+  <div class="stat-card">
+    <div class="val">{{ stats.total }}</div>
+    <div class="lbl">Total de registros</div>
+  </div>
+  <div class="stat-card">
+    <div class="val" style="color: var(--cyan);">{{ stats.today }}</div>
+    <div class="lbl">Hoje</div>
+  </div>
+  <div class="stat-card">
+    <div class="val" style="color: var(--red);">{{ stats.failures }}</div>
+    <div class="lbl">Falhas de login</div>
+  </div>
+  <div class="stat-card">
+    <div class="val" style="color: #FCD34D;">{{ stats.security_24h }}</div>
+    <div class="lbl">Eventos segurança (24h)</div>
+  </div>
+</div>
+
+<!-- Filtros + Exportar -->
+<div class="card" style="padding: 16px 20px; margin-bottom: 16px;">
+  <form method="get" action="{{ url_for('audit_log') }}" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;">
+
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+      <label style="font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Categoria</label>
+      <select name="category" style="background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 13px; min-width: 130px;">
+        <option value="" {% if not filters.category %}selected{% endif %}>Todas</option>
+        <option value="security"  {% if filters.category == 'security'  %}selected{% endif %}>Segurança</option>
+        <option value="access"    {% if filters.category == 'access'    %}selected{% endif %}>Acesso</option>
+        <option value="admin"     {% if filters.category == 'admin'     %}selected{% endif %}>Admin</option>
+        <option value="system"    {% if filters.category == 'system'    %}selected{% endif %}>Sistema</option>
+      </select>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+      <label style="font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Período</label>
+      <select name="date" style="background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 13px; min-width: 120px;">
+        <option value=""      {% if not filters.date    %}selected{% endif %}>Todo período</option>
+        <option value="today" {% if filters.date == 'today' %}selected{% endif %}>Hoje</option>
+        <option value="week"  {% if filters.date == 'week'  %}selected{% endif %}>Últimos 7 dias</option>
+        <option value="month" {% if filters.date == 'month' %}selected{% endif %}>Últimos 30 dias</option>
+      </select>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 200px;">
+      <label style="font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Busca</label>
+      <input
+        type="text"
+        name="search"
+        value="{{ filters.search }}"
+        placeholder="Ação, detalhe ou IP..."
+        style="background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 13px; width: 100%;"
+      >
+    </div>
+
+    <div style="display: flex; gap: 8px;">
+      <button type="submit" class="btn btn-cyan">Filtrar</button>
+      {% if filters.category or filters.date or filters.search %}
+      <a href="{{ url_for('audit_log') }}" class="btn btn-ghost">Limpar</a>
+      {% endif %}
+    </div>
+
+    <div style="margin-left: auto;">
+      <a href="{{ url_for('audit_export') }}" class="btn btn-ghost" style="font-size: 13px;">
+        ↓ Exportar CSV
+      </a>
+    </div>
+  </form>
+</div>
+
+<!-- Resultado -->
+<div style="color: var(--muted); font-size: 13px; margin-bottom: 10px;">
+  {% if total_filtered != stats.total %}
+    {{ total_filtered }} registro(s) encontrado(s)
+  {% else %}
+    {{ total_filtered }} registro(s) no total
+  {% endif %}
+  &nbsp;·&nbsp; Retenção: 90 dias
+</div>
+
+<!-- Tabela -->
+<div class="card" style="padding: 0; overflow: hidden;">
+  {% if events %}
+  <table>
+    <thead>
+      <tr>
+        <th>Data/Hora (UTC)</th>
+        <th>Categoria</th>
+        <th>Ação</th>
+        <th>Detalhe</th>
+        <th>IP</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in events %}
+      <tr>
+        <td style="color: var(--muted); font-size: 13px; white-space: nowrap;">{{ e.ts }}</td>
+        <td>
+          {% if e.category == 'security' %}
+            <span class="badge" style="background: rgba(248,113,113,0.12); color: var(--red);">segurança</span>
+          {% elif e.category == 'access' %}
+            <span class="badge" style="background: rgba(6,182,212,0.12); color: var(--cyan);">acesso</span>
+          {% elif e.category == 'admin' %}
+            <span class="badge" style="background: rgba(251,191,36,0.12); color: #FCD34D;">admin</span>
+          {% else %}
+            <span class="badge" style="background: rgba(148,163,184,0.1); color: var(--muted);">sistema</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if 'ok' in e.action %}
+            <span style="color: var(--green);">{{ e.action }}</span>
+          {% elif 'falha' in e.action or 'bloqueado' in e.action %}
+            <span style="color: var(--red);">{{ e.action }}</span>
+          {% else %}
+            <span>{{ e.action }}</span>
+          {% endif %}
+        </td>
+        <td style="color: var(--muted); font-size: 13px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ e.detail }}">{{ e.detail }}</td>
+        <td style="color: var(--muted); font-size: 13px; font-family: monospace;">{{ e.ip }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">
+    <div class="icon">📋</div>
+    <p>Nenhum evento encontrado{% if filters.category or filters.date or filters.search %} para os filtros aplicados{% endif %}.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Paginação -->
+{% if total_pages > 1 %}
+<div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 20px;">
+  {% if page > 1 %}
+  <a href="{{ url_for('audit_log', page=page-1, category=filters.category, date=filters.date, search=filters.search) }}"
+     class="btn btn-ghost" style="padding: 6px 14px; font-size: 13px;">← Anterior</a>
+  {% else %}
+  <span class="btn btn-ghost" style="padding: 6px 14px; font-size: 13px; opacity: 0.3; cursor: not-allowed;">← Anterior</span>
+  {% endif %}
+
+  <span style="color: var(--muted); font-size: 13px;">Página {{ page }} de {{ total_pages }}</span>
+
+  {% if page < total_pages %}
+  <a href="{{ url_for('audit_log', page=page+1, category=filters.category, date=filters.date, search=filters.search) }}"
+     class="btn btn-ghost" style="padding: 6px 14px; font-size: 13px;">Próxima →</a>
+  {% else %}
+  <span class="btn btn-ghost" style="padding: 6px 14px; font-size: 13px; opacity: 0.3; cursor: not-allowed;">Próxima →</span>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

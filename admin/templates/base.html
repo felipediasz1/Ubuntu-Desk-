@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Ubuntu Desk — Admin{% endblock %}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0F172A;
+      --bg2:      #1E293B;
+      --bg3:      #334155;
+      --cyan:     #06B6D4;
+      --cyan-dim: #0891B2;
+      --text:     #E2E8F0;
+      --muted:    #94A3B8;
+      --border:   #334155;
+      --red:      #F87171;
+      --green:    #4ADE80;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ── */
+    .layout { display: flex; min-height: 100vh; }
+
+    .sidebar {
+      width: 220px;
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+      flex-shrink: 0;
+    }
+
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 20px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-logo .dot {
+      width: 10px; height: 10px;
+      background: var(--cyan);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--cyan);
+    }
+
+    .sidebar-logo span {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--cyan);
+      letter-spacing: 0.3px;
+    }
+
+    .sidebar-nav { padding: 12px 8px; flex: 1; }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: 8px;
+      color: var(--muted);
+      text-decoration: none;
+      font-weight: 500;
+      transition: background 0.15s, color 0.15s;
+      margin-bottom: 2px;
+    }
+    .nav-item:hover, .nav-item.active {
+      background: var(--bg3);
+      color: var(--text);
+    }
+    .nav-item.active { color: var(--cyan); }
+
+    .sidebar-footer {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+    }
+    .sidebar-footer a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+    }
+    .sidebar-footer a:hover { color: var(--red); }
+
+    /* ── Main ── */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    .topbar {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg2);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .topbar h1 { font-size: 18px; font-weight: 600; }
+
+    .content { padding: 24px; flex: 1; overflow-y: auto; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
+
+    .stat-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      text-align: center;
+    }
+    .stat-card .val {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--cyan);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .stat-card .lbl { color: var(--muted); font-size: 13px; }
+
+    /* ── Table ── */
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      padding: 10px 14px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .badge-online  { background: rgba(74,222,128,0.15); color: var(--green); }
+    .badge-offline { background: rgba(148,163,184,0.1); color: var(--muted); }
+
+    .id-code {
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      color: var(--cyan);
+      letter-spacing: 1px;
+    }
+
+    a { color: var(--cyan); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Empty state ── */
+    .empty {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+    .empty .icon { font-size: 40px; margin-bottom: 12px; }
+    .empty p { font-size: 15px; }
+
+    /* ── Alert ── */
+    .alert {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border: 1px solid;
+    }
+    .alert-warn { background: rgba(251,191,36,0.08); border-color: rgba(251,191,36,0.3); color: #FCD34D; }
+
+    /* ── Button ── */
+    .btn {
+      display: inline-block;
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; text-decoration: none; }
+    .btn-cyan  { background: var(--cyan); color: #0F172A; }
+    .btn-ghost { background: var(--bg3); color: var(--text); }
+
+    /* ── Detail table ── */
+    .detail-table { width: 100%; }
+    .detail-table tr td:first-child {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      width: 160px;
+      padding: 10px 0;
+    }
+    .detail-table tr td:last-child { padding: 10px 0; }
+  </style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <div class="dot"></div>
+      <span>Ubuntu Desk</span>
+    </div>
+    <div class="sidebar-nav">
+      <a href="{{ url_for('index') }}" class="nav-item {% if request.endpoint == 'index' %}active{% endif %}">
+        ☰ &nbsp;Dispositivos
+      </a>
+      <a href="{{ url_for('recordings') }}" class="nav-item {% if request.endpoint == 'recordings' %}active{% endif %}">
+        ▶ &nbsp;Gravações
+      </a>
+      <a href="{{ url_for('audit_log') }}" class="nav-item {% if request.endpoint == 'audit_log' %}active{% endif %}">
+        ⚑ &nbsp;Auditoria
+      </a>
+      <a href="{{ url_for('deploy') }}" class="nav-item {% if request.endpoint == 'deploy' %}active{% endif %}">
+        ⬇ &nbsp;Deploy
+      </a>
+    </div>
+    <div class="sidebar-footer">
+      <a href="{{ url_for('logout') }}">⎋ Sair</a>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="topbar">
+      <h1>{% block page_title %}Painel{% endblock %}</h1>
+      <span style="color: var(--muted); font-size: 13px;">Admin</span>
+    </div>
+    <div class="content">
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
