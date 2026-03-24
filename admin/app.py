@@ -783,17 +783,25 @@ def _init_api_db(conn):
 
     conn.commit()
 
-def _api_token_valid(token: str) -> bool:
-    """Session token expira após 30 dias."""
+def _api_token_valid(token: str):
+    """Returns username if token is valid and user is active, else None."""
     try:
         conn = _get_api_db()
         row = conn.execute(
-            "SELECT created_at FROM api_tokens WHERE token = ?", (token,)
+            "SELECT t.created_at, t.username, u.is_active "
+            "FROM api_tokens t LEFT JOIN users u ON t.username = u.username "
+            "WHERE t.token = ?",
+            (token,)
         ).fetchone()
         conn.close()
         if not row:
-            return False
-        return (time.time() - row[0]) < 30 * 86400
+            return None
+        created_at, username, is_active = row
+        if (time.time() - created_at) >= 30 * 86400:
+            return None
+        if is_active is not None and not is_active:
+            return None
+        return username
     except Exception:
         return False
 
@@ -815,11 +823,20 @@ def api_auth_required(f):
     def decorated(*args, **kwargs):
         # Bearer token (session, expira 30d)
         auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer ") and _api_token_valid(auth[7:]):
-            return f(*args, **kwargs)
-        # X-Api-Key (named, permanente)
+        if auth.startswith("Bearer "):
+            username = _api_token_valid(auth[7:])
+            if username:
+                conn = _get_api_db()
+                row = conn.execute(
+                    "SELECT role FROM users WHERE username=?", (username,)
+                ).fetchone()
+                conn.close()
+                g.api_user = {"username": username, "role": row[0] if row else "user"}
+                return f(*args, **kwargs)
+        # X-Api-Key (named, permanente) — treated as admin
         api_key = request.headers.get("X-Api-Key", "")
         if api_key and _api_key_valid(api_key):
+            g.api_user = {"username": "admin", "role": "admin"}
             return f(*args, **kwargs)
         return jsonify({"error": "Unauthorized"}), 401
     return decorated
@@ -835,29 +852,35 @@ def api_login():
         audit("login_bloqueado", "IP bloqueado (API) por excesso de tentativas")
         return jsonify({"error": "Too many login attempts. Try again later."}), 429
     body = request.get_json(silent=True) or {}
-    username = body.get("username") or body.get("id") or ""
+    username = (body.get("username") or body.get("id") or "").strip()
     password = body.get("password") or ""
-    if username == "admin" and check_password(password):
+    conn = _get_api_db()
+    row = conn.execute(
+        "SELECT password_hash, role, is_active FROM users WHERE username=?", (username,)
+    ).fetchone()
+    conn.close()
+    if row and row[2] and _verify_user_password(password, row[0]):
         token = secrets.token_hex(32)
         conn = _get_api_db()
         conn.execute(
-            "INSERT OR REPLACE INTO api_tokens (token, created_at) VALUES (?, ?)",
-            (token, time.time()),
+            "INSERT OR REPLACE INTO api_tokens (token, created_at, username) VALUES (?,?,?)",
+            (token, time.time(), username),
         )
         conn.commit()
         conn.close()
         _clear_attempts(ip)
         audit("api_login_ok", f"user={username}")
+        is_admin = row[1] == "admin"
         return jsonify({
             "type": "access_token",
             "access_token": token,
             "user": {
-                "name": "admin",
-                "email": "admin@ubuntudesk.app",
-                "note": "Administrator",
+                "name": username,
+                "email": "admin@ubuntudesk.app" if username == "admin" else "",
+                "note": row[1],
                 "status": 1,
                 "grp": "",
-                "is_admin": True,
+                "is_admin": is_admin,
             },
         })
     _record_attempt(ip)
@@ -868,13 +891,15 @@ def api_login():
 @app.route("/api/currentUser", methods=["GET", "POST"])
 @api_auth_required
 def api_current_user():
+    username = g.api_user["username"]
+    role = g.api_user["role"]
     return jsonify({
-        "name": "admin",
-        "email": "admin@ubuntudesk.app",
-        "note": "Administrator",
+        "name": username,
+        "email": "admin@ubuntudesk.app" if username == "admin" else "",
+        "note": role,
         "status": 1,
         "grp": "",
-        "is_admin": True,
+        "is_admin": role == "admin",
     })
 
 @app.route("/api/logout", methods=["POST"])
