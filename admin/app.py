@@ -1360,6 +1360,8 @@ def users_set_role(username):
 @app.route("/users/<username>/password", methods=["POST"])
 @login_required
 def users_reset_password(username):
+    if username == "admin":
+        return redirect(url_for("users_list"))
     password = request.form.get("password", "")
     if len(password) < 8:
         return redirect(url_for("users_list"))
