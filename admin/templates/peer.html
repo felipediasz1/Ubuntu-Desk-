@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ peer.id }} — Ubuntu Desk Admin{% endblock %}
+{% block page_title %}Dispositivo {{ peer.id }}{% endblock %}
+
+{% block content %}
+
+<a href="{{ url_for('index') }}" class="btn btn-ghost" style="margin-bottom: 20px; display: inline-block;">← Voltar</a>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+
+  <!-- Info do dispositivo -->
+  <div class="card">
+    <h3 style="margin-bottom: 16px; color: var(--cyan);">Informações</h3>
+    <table class="detail-table">
+      <tr><td>ID</td><td class="id-code">{{ peer.id }}</td></tr>
+      <tr><td>Hostname</td><td>{{ peer.hostname }}</td></tr>
+      <tr><td>Sistema</td><td>{{ peer.os }}</td></tr>
+      <tr><td>Usuário</td><td>{{ peer.username }}</td></tr>
+      <tr><td>CPU</td><td style="color: var(--muted);">{{ peer.cpu }}</td></tr>
+      <tr><td>Memória</td><td style="color: var(--muted);">{{ peer.memory }}</td></tr>
+      <tr><td>Status</td><td>
+        {% if peer.status == 1 %}
+          <span class="badge badge-online">● Online</span>
+        {% else %}
+          <span class="badge badge-offline">Offline</span>
+        {% endif %}
+      </td></tr>
+      <tr><td>Registrado</td><td style="color: var(--muted);">{{ peer.created_at }}</td></tr>
+    </table>
+  </div>
+
+  <!-- Nota -->
+  <div class="card">
+    <h3 style="margin-bottom: 16px; color: var(--cyan);">Nota</h3>
+    <form method="post" action="{{ url_for('update_note', peer_id=peer.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <textarea name="note" rows="5" style="
+        width: 100%;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        color: var(--text);
+        font-size: 14px;
+        resize: vertical;
+        margin-bottom: 12px;
+        outline: none;
+      " placeholder="Adicione uma nota sobre este dispositivo...">{{ peer.note }}</textarea>
+      <button type="submit" class="btn btn-cyan">Salvar nota</button>
+    </form>
+  </div>
+
+</div>
+
+<!-- Info bruta -->
+<div class="card">
+  <h3 style="margin-bottom: 12px; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Raw Info</h3>
+  <pre style="
+    background: var(--bg);
+    border-radius: 8px;
+    padding: 14px;
+    font-size: 12px;
+    color: var(--muted);
+    overflow-x: auto;
+    font-family: 'Courier New', monospace;
+    white-space: pre-wrap;
+  ">{{ peer.info_raw }}</pre>
+</div>
+
+{% endblock %}

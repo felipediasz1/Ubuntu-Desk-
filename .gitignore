@@ -1,0 +1,65 @@
+# ── Build artifacts ───────────────────────────────────────────────
+client/target/
+client/flutter/build/
+client/flutter/.dart_tool/
+client/flutter/.flutter-plugins
+client/flutter/.flutter-plugins-dependencies
+dist/
+installer/Output/
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+
+# ── Node (gerador de ícones) ───────────────────────────────────────
+node_modules/
+package-lock.json
+
+# ── Python / Admin panel ──────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# ── Cargo ─────────────────────────────────────────────────────────
+Cargo.lock
+**/.cargo/
+
+# ── Android ───────────────────────────────────────────────────────
+client/flutter/android/local.properties
+client/flutter/android/key.properties
+client/flutter/android/.gradle/
+client/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/GeneratedPluginRegistrant.kt
+
+# ── iOS / macOS ───────────────────────────────────────────────────
+client/flutter/ios/Pods/
+client/flutter/ios/.symlinks/
+client/flutter/ios/Flutter/Flutter.framework
+client/flutter/macos/Pods/
+client/flutter/macos/.symlinks/
+
+# ── Server ────────────────────────────────────────────────────────
+server/data/
+.env
+*.sqlite3
+*.sqlite3-journal
+
+# ── Secrets / Chaves ──────────────────────────────────────────────
+*.pem
+*.key
+.secret_key
+id_ed25519
+id_ed25519.pub
+key.properties
+secrets.json
+
+# ── Temporários ───────────────────────────────────────────────────
+*.tmp
+*.log
+_tmp_icon_*.png
+.DS_Store
+Thumbs.db
+desktop.ini

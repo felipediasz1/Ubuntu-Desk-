@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Gravações — Ubuntu Desk Admin{% endblock %}
+{% block page_title %}Gravações de Sessão{% endblock %}
+
+{% block content %}
+
+<!-- Filtros -->
+<div class="card" style="padding: 16px 20px; margin-bottom: 20px;">
+  <form method="get" style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+    <div>
+      <label style="display:block; font-size:12px; color:var(--muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">Peer ID</label>
+      <select name="peer" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;">
+        <option value="">Todos</option>
+        {% for p in peers %}
+        <option value="{{ p }}" {% if p == peer_filter %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label style="display:block; font-size:12px; color:var(--muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">Direção</label>
+      <select name="direction" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;">
+        <option value="">Todas</option>
+        <option value="incoming" {% if dir_filter == 'incoming' %}selected{% endif %}>Recebidas</option>
+        <option value="outgoing" {% if dir_filter == 'outgoing' %}selected{% endif %}>Enviadas</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-cyan" style="padding: 8px 20px;">Filtrar</button>
+    {% if peer_filter or dir_filter %}
+    <a href="{{ url_for('recordings') }}" class="btn btn-ghost" style="padding: 8px 16px;">Limpar</a>
+    {% endif %}
+  </form>
+</div>
+
+<!-- Tabela -->
+<div class="card" style="padding: 0; overflow: hidden;">
+  {% if recordings %}
+  <table>
+    <thead>
+      <tr>
+        <th>Direção</th>
+        <th>Peer ID</th>
+        <th>Data/Hora</th>
+        <th>Formato</th>
+        <th>Tamanho</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in recordings %}
+      <tr>
+        <td>
+          {% if r.direction == 'incoming' %}
+            <span class="badge" style="background:rgba(6,182,212,0.1);color:var(--cyan);">↙ Recebida</span>
+          {% else %}
+            <span class="badge" style="background:rgba(74,222,128,0.1);color:var(--green);">↗ Enviada</span>
+          {% endif %}
+        </td>
+        <td class="id-code">{{ r.peer_id }}</td>
+        <td style="color:var(--muted); font-size:13px;">{{ r.ts }}</td>
+        <td style="color:var(--muted); font-size:12px; text-transform:uppercase;">{{ r.ext }}</td>
+        <td style="color:var(--muted); font-size:13px;">{{ r.size_fmt }}</td>
+        <td>
+          <a href="{{ url_for('download_recording', filename=r.filename) }}" class="btn btn-ghost" style="padding:4px 14px; font-size:12px;">
+            ⬇ Download
+          </a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">
+    <div class="icon">🎥</div>
+    <p>Nenhuma gravação encontrada.</p>
+    <p style="margin-top:8px; font-size:13px; color:var(--muted);">
+      Diretório: <code style="font-size:12px;">{{ recording_dir }}</code>
+    </p>
+    <p style="margin-top:8px; font-size:13px;">
+      Ative "Gravar sessões automaticamente" nas configurações do cliente Ubuntu Desk.
+    </p>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

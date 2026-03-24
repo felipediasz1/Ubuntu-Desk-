@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Login — Ubuntu Desk Admin</title>
+  <style nonce="{{ csp_nonce }}">
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:     #0F172A;
+      --bg2:    #1E293B;
+      --border: #334155;
+      --cyan:   #06B6D4;
+      --text:   #E2E8F0;
+      --muted:  #94A3B8;
+      --red:    #F87171;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .box {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px 36px;
+      width: 360px;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .dot { width: 12px; height: 12px; background: var(--cyan); border-radius: 50%; box-shadow: 0 0 8px var(--cyan); }
+    .logo span { font-size: 18px; font-weight: 700; color: var(--cyan); }
+    h2 { font-size: 15px; font-weight: 500; color: var(--muted); margin-bottom: 24px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    input[type=password], input[type=text] {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: var(--text);
+      font-size: 14px;
+      margin-bottom: 20px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type=password]:focus, input[type=text]:focus { border-color: var(--cyan); }
+    button {
+      width: 100%;
+      background: var(--cyan);
+      color: var(--bg);
+      font-size: 14px;
+      font-weight: 700;
+      padding: 11px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .error { color: var(--red); font-size: 13px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="logo">
+      <div class="dot"></div>
+      <span>Ubuntu Desk</span>
+    </div>
+    <h2>Acesso ao painel de administração</h2>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Senha</label>
+      <input type="password" name="password" autofocus placeholder="••••••••">
+      {% if totp_required %}
+      <label>Código 2FA</label>
+      <input id="totp-input" type="text" name="totp" placeholder="000000" maxlength="6" inputmode="numeric">
+      {% endif %}
+      <button type="submit">Entrar</button>
+    </form>
+  <script nonce="{{ csp_nonce }}">
+    document.querySelector('form').addEventListener('submit', function() {
+      var btn = this.querySelector('button[type=submit]');
+      if (btn) { btn.disabled = true; btn.textContent = 'Entrando…'; }
+    });
+  </script>
+  </div>
+</body>
+</html>
