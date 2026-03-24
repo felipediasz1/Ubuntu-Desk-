@@ -248,6 +248,9 @@
       <a href="{{ url_for('apidocs') }}" class="nav-item {% if request.endpoint == 'apidocs' %}active{% endif %}">
         ⚡ &nbsp;API REST
       </a>
+      <a href="{{ url_for('users_list') }}" class="nav-item {% if request.endpoint and (request.endpoint == 'users_list' or request.endpoint.startswith('users_')) %}active{% endif %}">
+        👤 &nbsp;Usuários
+      </a>
     </div>
     <div class="sidebar-footer">
       <a href="{{ url_for('logout') }}">⎋ Sair</a>
