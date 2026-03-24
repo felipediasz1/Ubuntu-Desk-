@@ -803,7 +803,7 @@ def _api_token_valid(token: str):
             return None
         return username
     except Exception:
-        return False
+        return None
 
 def _api_key_valid(key: str) -> bool:
     """Named API key — permanente até ser revogada."""

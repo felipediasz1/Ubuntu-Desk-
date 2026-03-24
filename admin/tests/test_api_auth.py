@@ -71,3 +71,22 @@ def test_xapikey_gets_admin_role(client, tmp_dbs):
     conn.close()
     rv = client.get("/api/currentUser", headers={"X-Api-Key": "test-api-key-value"})
     assert rv.status_code == 200
+    data = rv.get_json()
+    assert data["name"] == "admin"
+    assert data["is_admin"] is True
+
+
+def test_expired_token_rejected(client):
+    """Token older than 30 days must be rejected."""
+    rv = _login(client)
+    token = rv.get_json()["access_token"]
+    # Manually backdate the token's created_at to 31 days ago
+    conn = flask_app._get_api_db()
+    conn.execute(
+        "UPDATE api_tokens SET created_at = ? WHERE token = ?",
+        (time.time() - 31 * 86400, token),
+    )
+    conn.commit()
+    conn.close()
+    rv2 = client.get("/api/currentUser", headers={"Authorization": f"Bearer {token}"})
+    assert rv2.status_code == 401
