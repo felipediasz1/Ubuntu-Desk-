@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Ubuntu Desk — Usuários{% endblock %}
+{% block page_title %}Usuários{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+  <div></div>
+  <button class="btn btn-cyan" data-action="open-modal" data-target="modal-new-user">+ Novo Usuário</button>
+</div>
+
+{% if error %}
+<div class="alert alert-warn">{{ error }}</div>
+{% endif %}
+
+{% if view_ab %}
+<div class="card" style="margin-bottom:20px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <h3 style="font-size:15px;">Address Book — {{ view_ab.username }}</h3>
+    <a href="{{ url_for('users_list') }}" class="btn btn-ghost" style="font-size:12px;">Fechar</a>
+  </div>
+  <pre style="background:var(--bg);padding:14px;border-radius:8px;font-size:12px;overflow-x:auto;color:var(--muted);max-height:300px;">{{ view_ab.data }}</pre>
+</div>
+{% endif %}
+
+<div class="card">
+  {% if users %}
+  <table>
+    <thead>
+      <tr>
+        <th>Usuário</th>
+        <th>Role</th>
+        <th>Status</th>
+        <th>Criado em</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td style="font-weight:600;">{{ u.username }}</td>
+        <td>
+          {% if u.role == 'admin' %}
+            <span class="badge" style="background:rgba(6,182,212,0.15);color:var(--cyan);">admin</span>
+          {% elif u.role == 'manager' %}
+            <span class="badge" style="background:rgba(251,191,36,0.15);color:#FCD34D;">manager</span>
+          {% else %}
+            <span class="badge badge-offline">user</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if u.is_active %}
+            <span class="badge badge-online">Ativo</span>
+          {% else %}
+            <span class="badge" style="background:rgba(248,113,113,0.15);color:var(--red);">Inativo</span>
+          {% endif %}
+        </td>
+        <td style="color:var(--muted);">{{ u.created_at }}</td>
+        <td>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            {% if u.username != 'admin' %}
+            <!-- Role -->
+            <form method="POST" action="{{ url_for('users_set_role', username=u.username) }}" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <select name="role" class="btn btn-ghost" style="padding:4px 8px;font-size:12px;cursor:pointer;"
+                      data-action="submit-on-change">
+                <option value="user"    {% if u.role=='user' %}selected{% endif %}>user</option>
+                <option value="manager" {% if u.role=='manager' %}selected{% endif %}>manager</option>
+              </select>
+            </form>
+            <!-- Reset senha -->
+            <button class="btn btn-ghost" style="font-size:12px;"
+                    data-action="open-modal" data-target="modal-reset-{{ u.username }}">Senha</button>
+            <!-- Toggle -->
+            <form method="POST" action="{{ url_for('users_toggle', username=u.username) }}" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-ghost" style="font-size:12px;">
+                {% if u.is_active %}Desativar{% else %}Reativar{% endif %}
+              </button>
+            </form>
+            <!-- Delete -->
+            <form method="POST" action="{{ url_for('users_delete', username=u.username) }}" style="display:inline;"
+                  data-action="confirm-delete" data-name="{{ u.username }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn" style="background:rgba(248,113,113,0.15);color:var(--red);font-size:12px;">Excluir</button>
+            </form>
+            {% endif %}
+            <!-- Ver AB -->
+            <a href="{{ url_for('users_view_ab', username=u.username) }}"
+               class="btn btn-ghost" style="font-size:12px;">Ver AB</a>
+          </div>
+
+          <!-- Modal reset senha inline -->
+          {% if u.username != 'admin' %}
+          <div id="modal-reset-{{ u.username }}" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:center;justify-content:center;">
+            <div class="card" style="width:360px;margin:0;">
+              <h3 style="margin-bottom:16px;">Resetar senha — {{ u.username }}</h3>
+              <form method="POST" action="{{ url_for('users_reset_password', username=u.username) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="password" name="password" placeholder="Nova senha (mín. 8 caracteres)"
+                       style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);margin-bottom:12px;">
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                  <button type="button" class="btn btn-ghost" data-action="close-modal" data-target="modal-reset-{{ u.username }}">Cancelar</button>
+                  <button type="submit" class="btn btn-cyan">Salvar</button>
+                </div>
+              </form>
+            </div>
+          </div>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">
+    <div class="icon">👤</div>
+    <p>Nenhum usuário cadastrado.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Modal criar usuário -->
+<div id="modal-new-user" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:center;justify-content:center;">
+  <div class="card" style="width:400px;margin:0;">
+    <h3 style="margin-bottom:16px;">Novo Usuário</h3>
+    <form method="POST" action="{{ url_for('users_create') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="text" name="username" placeholder="Username"
+             style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);margin-bottom:10px;">
+      <input type="password" name="password" placeholder="Senha (mín. 8 caracteres)"
+             style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);margin-bottom:10px;">
+      <select name="role" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);margin-bottom:16px;">
+        <option value="user">user</option>
+        <option value="manager">manager</option>
+      </select>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button type="button" class="btn btn-ghost" data-action="close-modal" data-target="modal-new-user">Cancelar</button>
+        <button type="submit" class="btn btn-cyan">Criar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script nonce="{{ csp_nonce }}">
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  var action = btn.dataset.action;
+  if (action === 'open-modal') {
+    var modal = document.getElementById(btn.dataset.target);
+    if (modal) { modal.style.display = 'flex'; }
+  }
+  if (action === 'close-modal') {
+    var modal = document.getElementById(btn.dataset.target);
+    if (modal) { modal.style.display = 'none'; }
+  }
+  if (action === 'confirm-delete') {
+    if (!confirm('Excluir usuário "' + btn.closest('form').dataset.name + '"?')) e.preventDefault();
+  }
+});
+document.addEventListener('change', function(e) {
+  if (e.target.dataset.action === 'submit-on-change') {
+    e.target.closest('form').submit();
+  }
+});
+</script>
+{% endblock %}
