@@ -18,6 +18,7 @@
       --border:   #334155;
       --red:      #F87171;
       --green:    #4ADE80;
+      --yellow:   #FCD34D;
     }
 
     body {
@@ -193,7 +194,7 @@
       margin-bottom: 20px;
       border: 1px solid;
     }
-    .alert-warn { background: rgba(251,191,36,0.08); border-color: rgba(251,191,36,0.3); color: #FCD34D; }
+    .alert-warn { background: rgba(251,191,36,0.08); border-color: rgba(251,191,36,0.3); color: var(--yellow); }
 
     /* ── Button ── */
     .btn {
@@ -209,6 +210,34 @@
     .btn:hover { opacity: 0.85; text-decoration: none; }
     .btn-cyan  { background: var(--cyan); color: #0F172A; }
     .btn-ghost { background: var(--bg3); color: var(--text); }
+
+    /* ── Toast ── */
+    #toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 300;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .toast {
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      max-width: 320px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      animation: toast-in 0.2s ease;
+      pointer-events: auto;
+    }
+    .toast-success { background: rgba(74,222,128,0.15); border: 1px solid rgba(74,222,128,0.3); color: var(--green); }
+    .toast-error   { background: rgba(248,113,113,0.15); border: 1px solid rgba(248,113,113,0.3); color: var(--red); }
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
 
     /* ── Detail table ── */
     .detail-table { width: 100%; }
@@ -264,7 +293,7 @@
       <span style="color: var(--muted); font-size: 13px;">Admin</span>
     </div>
     {% if default_password_warning %}
-    <div style="background:rgba(251,191,36,0.08);border-bottom:1px solid rgba(251,191,36,0.3);color:#FCD34D;padding:10px 24px;font-size:13px;display:flex;align-items:center;gap:8px;">
+    <div style="background:rgba(251,191,36,0.08);border-bottom:1px solid rgba(251,191,36,0.3);color:var(--yellow);padding:10px 24px;font-size:13px;display:flex;align-items:center;gap:8px;">
       <span>⚠</span>
       <span>Você está usando a <strong>senha padrão</strong>. Altere a variável de ambiente <code>ADMIN_PASSWORD</code> antes de expor o painel na rede.</span>
     </div>
@@ -275,5 +304,35 @@
   </div>
 
 </div>
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div id="toast-container">
+  {% for category, message in messages %}
+  <div class="toast toast-{{ category }}">{{ message }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endwith %}
+
+<script nonce="{{ csp_nonce }}">
+  document.addEventListener('submit', function(e) {
+    var form = e.target;
+    var btn = (e.submitter && e.submitter.matches('button[type=submit]'))
+      ? e.submitter
+      : form.querySelector('button[type=submit]');
+    if (!btn || btn.dataset.action === 'close-modal') return;
+    btn.disabled = true;
+    btn.textContent = 'Salvando…';
+  });
+  // Auto-dismiss toasts
+  var toasts = document.querySelectorAll('.toast');
+  toasts.forEach(function(t) {
+    setTimeout(function() {
+      t.style.transition = 'opacity 0.3s';
+      t.style.opacity = '0';
+      setTimeout(function() { t.remove(); }, 300);
+    }, 3500);
+  });
+</script>
 </body>
 </html>

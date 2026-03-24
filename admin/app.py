@@ -18,7 +18,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from urllib.parse import urlparse, urljoin
-from flask import Flask, render_template, redirect, url_for, request, session, g, abort, send_file, jsonify, Response
+from flask import Flask, render_template, redirect, url_for, request, session, g, abort, send_file, jsonify, Response, flash
 
 app = Flask(__name__)
 
@@ -457,6 +457,7 @@ def update_note(peer_id):
         db.execute("UPDATE peer SET note=? WHERE id=?", (note, peer_id))
         db.commit()
     audit("nota_atualizada", f"id={peer_id}")
+    flash("Nota salva.", "success")
     return redirect(url_for("peer_detail", peer_id=peer_id))
 
 # ── Gravações ─────────────────────────────────────────────────────────────────
@@ -1338,6 +1339,7 @@ def users_create():
     conn.commit()
     conn.close()
     audit("user_created", f"username={username} role={role}")
+    flash(f"Usuário '{username}' criado.", "success")
     return redirect(url_for("users_list"))
 
 
@@ -1354,6 +1356,7 @@ def users_set_role(username):
     conn.commit()
     conn.close()
     audit("user_role_changed", f"username={username} new_role={role}")
+    flash(f"Role de '{username}' alterada para {role}.", "success")
     return redirect(url_for("users_list"))
 
 
@@ -1364,6 +1367,7 @@ def users_reset_password(username):
         return redirect(url_for("users_list"))
     password = request.form.get("password", "")
     if len(password) < 8:
+        flash("Senha deve ter ao menos 8 caracteres.", "error")
         return redirect(url_for("users_list"))
     conn = _get_api_db()
     conn.execute(
@@ -1375,6 +1379,7 @@ def users_reset_password(username):
     conn.commit()
     conn.close()
     audit("user_password_reset", f"username={username}", category="security")
+    flash(f"Senha de '{username}' redefinida.", "success")
     return redirect(url_for("users_list"))
 
 
@@ -1392,6 +1397,7 @@ def users_toggle(username):
         action = "user_reactivated" if new_state else "user_deactivated"
         cat    = "admin" if new_state else "security"
         audit(action, f"username={username}", category=cat)
+        flash(f"Usuário '{username}' {'reativado' if new_state else 'desativado'}.", "success")
     conn.close()
     return redirect(url_for("users_list"))
 
@@ -1408,6 +1414,7 @@ def users_delete(username):
         conn.execute("DELETE FROM users WHERE username=?", (username,))
     conn.close()
     audit("user_deleted", f"username={username}", category="security")
+    flash(f"Usuário '{username}' excluído.", "success")
     return redirect(url_for("users_list"))
 
 

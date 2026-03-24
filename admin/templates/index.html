@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Dispositivos — Ubuntu Desk Admin{% endblock %}
+{% block page_title %}Dispositivos{% endblock %}
+
+{% block content %}
+
+<!-- Stats -->
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="val">{{ total }}</div>
+    <div class="lbl">Registrados</div>
+  </div>
+  <div class="stat-card">
+    <div class="val" style="color: var(--green)">{{ active }}</div>
+    <div class="lbl">Online</div>
+  </div>
+  <div class="stat-card">
+    <div class="val" style="color: var(--muted)">{{ total - active }}</div>
+    <div class="lbl">Offline</div>
+  </div>
+</div>
+
+<!-- DB aviso -->
+{% if not db_exists %}
+<div class="alert alert-warn">
+  ⚠ Banco de dados não encontrado em <code>{{ db_path }}</code>.<br>
+  Inicie o servidor hbbs para que ele crie o banco automaticamente.
+</div>
+{% endif %}
+
+<!-- Busca -->
+{% if peers %}
+<div style="margin-bottom: 16px;">
+  <input id="peer-search" type="search" placeholder="Buscar por ID, hostname ou usuário…"
+         style="width:100%;padding:9px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:14px;outline:none;">
+</div>
+{% endif %}
+
+<!-- Tabela de dispositivos -->
+<div class="card" style="padding: 0; overflow: hidden;">
+  {% if peers %}
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Hostname</th>
+        <th>Sistema</th>
+        <th>Usuário</th>
+        <th>Status</th>
+        <th>Registrado em</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in peers %}
+      <tr>
+        <td><a href="{{ url_for('peer_detail', peer_id=p.id) }}" class="id-code">{{ p.id }}</a></td>
+        <td>{{ p.hostname }}</td>
+        <td style="color: var(--muted); font-size: 13px;">{{ p.os }}</td>
+        <td style="color: var(--muted);">{{ p.username }}</td>
+        <td>
+          {% if p.status == 1 %}
+            <span class="badge badge-online">● Online</span>
+          {% else %}
+            <span class="badge badge-offline">Offline</span>
+          {% endif %}
+        </td>
+        <td style="color: var(--muted); font-size: 13px;">{{ p.created_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">
+    <div class="icon">🖥</div>
+    <p>Nenhum dispositivo registrado ainda.</p>
+    <p style="margin-top: 8px; font-size: 13px;">Instale o cliente Ubuntu Desk e conecte-se ao servidor.</p>
+  </div>
+  {% endif %}
+</div>
+
+{% if peers %}
+<script nonce="{{ csp_nonce }}">
+  var input = document.getElementById('peer-search');
+  if (input) {
+    input.addEventListener('input', function() {
+      var q = this.value.toLowerCase();
+      document.querySelectorAll('tbody tr').forEach(function(row) {
+        row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+  }
+</script>
+{% endif %}
+
+{% endblock %}
