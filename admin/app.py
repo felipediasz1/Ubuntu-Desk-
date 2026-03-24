@@ -924,23 +924,37 @@ def api_ab_settings():
 @app.route("/api/ab", methods=["GET", "POST"])
 @api_auth_required
 def api_ab():
-    conn = _get_api_db()
+    ab_type = request.args.get("type", "")
+    if ab_type not in ("", "shared"):
+        return jsonify({"error": "Invalid type"}), 400
+
+    username = g.api_user["username"]
+    role     = g.api_user["role"]
+    owner    = "__shared__" if ab_type == "shared" else username
+
     if request.method == "GET":
+        conn = _get_api_db()
         row = conn.execute(
-            "SELECT data FROM address_books WHERE id = 1"
+            "SELECT data FROM address_books WHERE owner=?", (owner,)
         ).fetchone()
         conn.close()
         if not row:
             return "null", 200
         return jsonify({"data": row[0], "licensed_devices": 0})
     else:
+        # POST — write
+        if ab_type == "shared" and role not in ("admin", "manager"):
+            return jsonify({"error": "Permission denied"}), 403
         body = request.get_json(silent=True) or {}
         data = body.get("data", "{}")
+        conn = _get_api_db()
         conn.execute(
-            "INSERT OR REPLACE INTO address_books (id, data) VALUES (1, ?)", (data,)
+            "INSERT OR REPLACE INTO address_books (owner, data) VALUES (?,?)", (owner, data)
         )
         conn.commit()
         conn.close()
+        if ab_type == "shared":
+            audit("ab_shared_written", f"user={username}")
         return "", 200
 
 # ── REST API — Peers ──────────────────────────────────────────────────────────
