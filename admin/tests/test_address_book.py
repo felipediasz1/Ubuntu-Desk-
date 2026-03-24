@@ -50,6 +50,7 @@ def test_books_are_isolated(client):
     client.post("/api/ab", json={"data": '{"peers":[{"id":"aaa"}]}'}, headers=_auth(tok_a))
     rv = client.get("/api/ab", headers=_auth(tok_b))
     # bob should not see alice's data
+    assert rv.status_code == 200
     assert "aaa" not in (rv.get_json() or {}).get("data", "")
 
 
