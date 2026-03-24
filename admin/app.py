@@ -712,30 +712,76 @@ def _get_api_db():
     os.makedirs(os.path.dirname(API_DB), exist_ok=True)
     conn = sqlite3.connect(API_DB, check_same_thread=False)
     if not _api_db_initialized:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS api_tokens (
-                token      TEXT PRIMARY KEY,
-                created_at REAL NOT NULL
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS address_books (
-                id   INTEGER PRIMARY KEY,
-                data TEXT    NOT NULL DEFAULT '{}'
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS api_keys (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                name       TEXT    NOT NULL,
-                key        TEXT    UNIQUE NOT NULL,
-                created_at REAL    NOT NULL,
-                last_used  REAL
-            )
-        """)
-        conn.commit()
+        _init_api_db(conn)
         _api_db_initialized = True
     return conn
+
+def _init_api_db(conn):
+    """Run all migrations idempotently. Called once per process."""
+    # ── api_tokens ────────────────────────────────────────────────────────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS api_tokens (
+            token      TEXT PRIMARY KEY,
+            created_at REAL NOT NULL,
+            username   TEXT NOT NULL DEFAULT 'admin'
+        )
+    """)
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(api_tokens)").fetchall()]
+    if "username" not in cols:
+        conn.execute("ALTER TABLE api_tokens ADD COLUMN username TEXT NOT NULL DEFAULT 'admin'")
+
+    # ── api_keys ──────────────────────────────────────────────────────────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT    NOT NULL,
+            key        TEXT    UNIQUE NOT NULL,
+            created_at REAL    NOT NULL,
+            last_used  REAL
+        )
+    """)
+
+    # ── address_books — migrate from id INTEGER to owner TEXT ─────────────────
+    ab_cols = [r[1] for r in conn.execute("PRAGMA table_info(address_books)").fetchall()]
+    if not ab_cols:
+        conn.execute("""
+            CREATE TABLE address_books (
+                owner TEXT PRIMARY KEY,
+                data  TEXT NOT NULL DEFAULT '{}'
+            )
+        """)
+    elif ab_cols[0] == "id":
+        conn.execute("""
+            CREATE TABLE address_books_new (
+                owner TEXT PRIMARY KEY,
+                data  TEXT NOT NULL DEFAULT '{}'
+            )
+        """)
+        conn.execute("""
+            INSERT OR IGNORE INTO address_books_new (owner, data)
+            SELECT '__shared__', data FROM address_books WHERE id = 1
+        """)
+        conn.execute("DROP TABLE address_books")
+        conn.execute("ALTER TABLE address_books_new RENAME TO address_books")
+
+    # ── users ─────────────────────────────────────────────────────────────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            username      TEXT PRIMARY KEY,
+            password_hash TEXT NOT NULL,
+            role          TEXT NOT NULL DEFAULT 'user',
+            is_active     INTEGER NOT NULL DEFAULT 1,
+            created_at    REAL NOT NULL
+        )
+    """)
+    count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    if count == 0:
+        conn.execute(
+            "INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)",
+            ("admin", _hash_user_password(ADMIN_PASS), "admin", time.time()),
+        )
+
+    conn.commit()
 
 def _api_token_valid(token: str) -> bool:
     """Session token expira após 30 dias."""
