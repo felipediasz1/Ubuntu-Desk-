@@ -213,6 +213,24 @@ def check_password(pwd: str) -> bool:
     """Compara senha usando PBKDF2-SHA256 + timing-safe compare."""
     return hmac.compare_digest(_pbkdf2(pwd), _admin_hash())
 
+# ── Per-user password hashing (random salt per user) ─────────────────────────
+def _hash_user_password(pwd: str) -> str:
+    """Hash password with random per-user salt. Returns 'salt_hex$hash_hex'."""
+    salt = os.urandom(16)
+    h = hashlib.pbkdf2_hmac("sha256", pwd.encode(), salt, 260_000)
+    return salt.hex() + "$" + h.hex()
+
+def _verify_user_password(pwd: str, stored: str) -> bool:
+    """Verify password against stored 'salt_hex$hash_hex'."""
+    try:
+        salt_hex, hash_hex = stored.split("$", 1)
+        salt = bytes.fromhex(salt_hex)
+        expected = bytes.fromhex(hash_hex)
+        actual = hashlib.pbkdf2_hmac("sha256", pwd.encode(), salt, 260_000)
+        return hmac.compare_digest(actual, expected)
+    except Exception:
+        return False
+
 def check_totp(code: str) -> bool:
     if not TOTP_SECRET:
         return True
