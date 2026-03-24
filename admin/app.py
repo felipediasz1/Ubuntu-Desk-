@@ -90,6 +90,14 @@ _ACTION_CATEGORY = {
     "peer_visualizado":"access",
     "nota_atualizada": "admin",
     "gravacao_download":"access",
+    "user_created":        "admin",
+    "user_role_changed":   "admin",
+    "user_password_reset": "security",
+    "user_deactivated":    "security",
+    "user_reactivated":    "admin",
+    "user_deleted":        "security",
+    "ab_shared_written":   "admin",
+    "ab_viewed":           "access",
 }
 
 def _categorize(action: str) -> str:
@@ -1279,6 +1287,159 @@ def _startup_security_check():
         for msg in w:
             print(f"  ⚠  {msg}", file=sys.stderr)
         print("", file=sys.stderr)
+
+# ── User management (web panel — admin only) ──────────────────────────────────
+
+@app.route("/users")
+@login_required
+def users_list():
+    conn = _get_api_db()
+    rows = conn.execute(
+        "SELECT username, role, is_active, created_at FROM users ORDER BY created_at"
+    ).fetchall()
+    conn.close()
+    user_list = [
+        {
+            "username": r[0],
+            "role": r[1],
+            "is_active": bool(r[2]),
+            "created_at": datetime.fromtimestamp(r[3], tz=timezone.utc).strftime("%Y-%m-%d %H:%M"),
+        }
+        for r in rows
+    ]
+    return render_template("users.html", users=user_list)
+
+
+@app.route("/users/new", methods=["POST"])
+@login_required
+def users_create():
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "")
+    role     = request.form.get("role", "user")
+    if username == "__shared__" or not username:
+        return render_template("users.html",
+            error="Username inválido.", users=_users_list_data()), 400
+    if len(password) < 8:
+        return render_template("users.html",
+            error="Senha deve ter ao menos 8 caracteres.", users=_users_list_data()), 400
+    if role not in ("user", "manager"):
+        return render_template("users.html",
+            error="Role inválida.", users=_users_list_data()), 400
+    conn = _get_api_db()
+    existing = conn.execute("SELECT username FROM users WHERE username=?", (username,)).fetchone()
+    if existing:
+        conn.close()
+        return render_template("users.html",
+            error="Username já existe.", users=_users_list_data()), 400
+    conn.execute(
+        "INSERT INTO users (username, password_hash, role, is_active, created_at) VALUES (?,?,?,1,?)",
+        (username, _hash_user_password(password), role, time.time()),
+    )
+    conn.commit()
+    conn.close()
+    audit("user_created", f"username={username} role={role}")
+    return redirect(url_for("users_list"))
+
+
+@app.route("/users/<username>/role", methods=["POST"])
+@login_required
+def users_set_role(username):
+    if username == "admin":
+        return redirect(url_for("users_list"))
+    role = request.form.get("role", "user")
+    if role not in ("user", "manager"):
+        return redirect(url_for("users_list"))
+    conn = _get_api_db()
+    conn.execute("UPDATE users SET role=? WHERE username=?", (role, username))
+    conn.commit()
+    conn.close()
+    audit("user_role_changed", f"username={username} new_role={role}")
+    return redirect(url_for("users_list"))
+
+
+@app.route("/users/<username>/password", methods=["POST"])
+@login_required
+def users_reset_password(username):
+    password = request.form.get("password", "")
+    if len(password) < 8:
+        return redirect(url_for("users_list"))
+    conn = _get_api_db()
+    conn.execute(
+        "UPDATE users SET password_hash=? WHERE username=?",
+        (_hash_user_password(password), username),
+    )
+    # purge all active tokens for this user
+    conn.execute("DELETE FROM api_tokens WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
+    audit("user_password_reset", f"username={username}", category="security")
+    return redirect(url_for("users_list"))
+
+
+@app.route("/users/<username>/toggle", methods=["POST"])
+@login_required
+def users_toggle(username):
+    if username == "admin":
+        return redirect(url_for("users_list"))
+    conn = _get_api_db()
+    row = conn.execute("SELECT is_active FROM users WHERE username=?", (username,)).fetchone()
+    if row:
+        new_state = 0 if row[0] else 1
+        conn.execute("UPDATE users SET is_active=? WHERE username=?", (new_state, username))
+        conn.commit()
+        action = "user_reactivated" if new_state else "user_deactivated"
+        cat    = "admin" if new_state else "security"
+        audit(action, f"username={username}", category=cat)
+    conn.close()
+    return redirect(url_for("users_list"))
+
+
+@app.route("/users/<username>/delete", methods=["POST"])
+@login_required
+def users_delete(username):
+    if username == "admin":
+        return redirect(url_for("users_list"))
+    conn = _get_api_db()
+    with conn:  # transaction
+        conn.execute("DELETE FROM api_tokens WHERE username=?", (username,))
+        conn.execute("DELETE FROM address_books WHERE owner=?", (username,))
+        conn.execute("DELETE FROM users WHERE username=?", (username,))
+    conn.close()
+    audit("user_deleted", f"username={username}", category="security")
+    return redirect(url_for("users_list"))
+
+
+@app.route("/users/<username>/ab")
+@login_required
+def users_view_ab(username):
+    conn = _get_api_db()
+    row = conn.execute(
+        "SELECT data FROM address_books WHERE owner=?", (username,)
+    ).fetchone()
+    conn.close()
+    data = row[0] if row else "{}"
+    audit("ab_viewed", f"username={username}", category="access")
+    return render_template("users.html",
+        users=_users_list_data(),
+        view_ab={"username": username, "data": data})
+
+
+def _users_list_data():
+    conn = _get_api_db()
+    rows = conn.execute(
+        "SELECT username, role, is_active, created_at FROM users ORDER BY created_at"
+    ).fetchall()
+    conn.close()
+    return [
+        {
+            "username": r[0],
+            "role": r[1],
+            "is_active": bool(r[2]),
+            "created_at": datetime.fromtimestamp(r[3], tz=timezone.utc).strftime("%Y-%m-%d %H:%M"),
+        }
+        for r in rows
+    ]
+
 
 if __name__ == "__main__":
     _startup_security_check()
