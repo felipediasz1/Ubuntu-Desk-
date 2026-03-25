@@ -4,9 +4,20 @@
 
 {% block content %}
 
+{% block extra_style %}
+<style nonce="{{ csp_nonce }}">
+  @media (max-width: 768px) {
+    .peer-grid { grid-template-columns: 1fr !important; }
+    .peer-raw-pre { font-size: 11px !important; }
+    .detail-table tr td:first-child { width: 110px !important; }
+    .table-wrap { overflow-x: auto; }
+  }
+</style>
+{% endblock %}
+
 <a href="{{ url_for('index') }}" class="btn btn-ghost" style="margin-bottom: 20px; display: inline-block;">← Voltar</a>
 
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+<div class="peer-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
 
   <!-- Info do dispositivo -->
   <div class="card">
@@ -56,7 +67,7 @@
 <!-- Info bruta -->
 <div class="card">
   <h3 style="margin-bottom: 12px; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Raw Info</h3>
-  <pre style="
+  <pre class="peer-raw-pre" style="
     background: var(--bg);
     border-radius: 8px;
     padding: 14px;
