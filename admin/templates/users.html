@@ -71,9 +71,10 @@
             <button class="btn btn-ghost" style="font-size:12px;"
                     data-action="open-modal" data-target="modal-reset-{{ u.username }}">Senha</button>
             <!-- Toggle -->
-            <form method="POST" action="{{ url_for('users_toggle', username=u.username) }}" style="display:inline;">
+            <form method="POST" action="{{ url_for('users_toggle', username=u.username) }}" style="display:inline;"
+                  data-confirm="{% if u.is_active %}Desativar o usuário {{ u.username }}?{% else %}Reativar o usuário {{ u.username }}?{% endif %}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button class="btn btn-ghost" style="font-size:12px;">
+              <button type="submit" class="btn btn-ghost" style="font-size:12px;">
                 {% if u.is_active %}Desativar{% else %}Reativar{% endif %}
               </button>
             </form>
@@ -142,6 +143,13 @@
 </div>
 
 <script nonce="{{ csp_nonce }}">
+document.addEventListener('submit', function(e) {
+  var form = e.target;
+  var msg = form.dataset.confirm;
+  if (msg && !window.confirm(msg)) {
+    e.preventDefault();
+  }
+});
 document.addEventListener('click', function(e) {
   var btn = e.target.closest('[data-action]');
   if (!btn) return;
