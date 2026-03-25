@@ -346,23 +346,27 @@
 
   // ── Focus trap e Escape para modais ───────────────────────────────────────────
   (function() {
-    var FOCUSABLE = 'a[href],button:not([disabled]),input,select,textarea,[tabindex]:not([tabindex="-1"])';
+    var FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
     function trapFocus(modal) {
       var els = Array.from(modal.querySelectorAll(FOCUSABLE));
       if (!els.length) return;
       els[0].focus();
-      modal.addEventListener('keydown', function handler(e) {
-        if (e.key === 'Escape') { closeModal(modal); modal.removeEventListener('keydown', handler); return; }
+      // Remove any previous handler before adding a new one
+      if (modal._keydownHandler) { modal.removeEventListener('keydown', modal._keydownHandler); }
+      modal._keydownHandler = function(e) {
+        if (e.key === 'Escape') { closeModal(modal); return; }
         if (e.key !== 'Tab') return;
         var first = els[0], last = els[els.length - 1];
         if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last.focus(); } }
         else            { if (document.activeElement === last)  { e.preventDefault(); first.focus(); } }
-      });
+      };
+      modal.addEventListener('keydown', modal._keydownHandler);
     }
 
     function closeModal(modal) {
       modal.style.display = 'none';
+      if (modal._keydownHandler) { modal.removeEventListener('keydown', modal._keydownHandler); modal._keydownHandler = null; }
       var opener = modal._opener;
       if (opener) { opener.focus(); }
     }
