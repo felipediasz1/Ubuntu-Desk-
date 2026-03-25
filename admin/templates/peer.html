@@ -34,7 +34,8 @@
     <h3 style="margin-bottom: 16px; color: var(--cyan);">Nota</h3>
     <form method="post" action="{{ url_for('update_note', peer_id=peer.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <textarea name="note" rows="5" style="
+      <label for="peer-note" style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px;">Nota sobre o dispositivo</label>
+      <textarea id="peer-note" name="note" rows="5" style="
         width: 100%;
         background: var(--bg);
         border: 1px solid var(--border);
