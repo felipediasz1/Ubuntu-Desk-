@@ -92,9 +92,10 @@
 
           <!-- Modal reset senha inline -->
           {% if u.username != 'admin' %}
-          <div id="modal-reset-{{ u.username }}" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:center;justify-content:center;">
+          <div id="modal-reset-{{ u.username }}" role="dialog" aria-modal="true" aria-labelledby="modal-reset-{{ u.username }}-title"
+               style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:center;justify-content:center;">
             <div class="card" style="width:360px;margin:0;">
-              <h3 style="margin-bottom:16px;">Resetar senha — {{ u.username }}</h3>
+              <h3 id="modal-reset-{{ u.username }}-title" style="margin-bottom:16px;">Resetar senha — {{ u.username }}</h3>
               <form method="POST" action="{{ url_for('users_reset_password', username=u.username) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <label for="pwd-{{ u.username }}" style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px;">Nova senha</label>
@@ -122,9 +123,10 @@
 </div>
 
 <!-- Modal criar usuário -->
-<div id="modal-new-user" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:center;justify-content:center;">
+<div id="modal-new-user" role="dialog" aria-modal="true" aria-labelledby="modal-new-user-title"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:center;justify-content:center;">
   <div class="card" style="width:400px;margin:0;">
-    <h3 style="margin-bottom:16px;">Novo Usuário</h3>
+    <h3 id="modal-new-user-title" style="margin-bottom:16px;">Novo Usuário</h3>
     <form method="POST" action="{{ url_for('users_create') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label for="new-username" style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px;">Username</label>
@@ -157,16 +159,7 @@ document.addEventListener('submit', function(e) {
 document.addEventListener('click', function(e) {
   var btn = e.target.closest('[data-action]');
   if (!btn) return;
-  var action = btn.dataset.action;
-  if (action === 'open-modal') {
-    var modal = document.getElementById(btn.dataset.target);
-    if (modal) { modal.style.display = 'flex'; }
-  }
-  if (action === 'close-modal') {
-    var modal = document.getElementById(btn.dataset.target);
-    if (modal) { modal.style.display = 'none'; }
-  }
-  if (action === 'confirm-delete') {
+  if (btn.dataset.action === 'confirm-delete') {
     if (!confirm('Excluir usuário "' + btn.closest('form').dataset.name + '"?')) e.preventDefault();
   }
 });

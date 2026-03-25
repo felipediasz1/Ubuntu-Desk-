@@ -343,6 +343,44 @@
       setTimeout(function() { t.remove(); }, 300);
     }, 3500);
   });
+
+  // ── Focus trap e Escape para modais ───────────────────────────────────────────
+  (function() {
+    var FOCUSABLE = 'a[href],button:not([disabled]),input,select,textarea,[tabindex]:not([tabindex="-1"])';
+
+    function trapFocus(modal) {
+      var els = Array.from(modal.querySelectorAll(FOCUSABLE));
+      if (!els.length) return;
+      els[0].focus();
+      modal.addEventListener('keydown', function handler(e) {
+        if (e.key === 'Escape') { closeModal(modal); modal.removeEventListener('keydown', handler); return; }
+        if (e.key !== 'Tab') return;
+        var first = els[0], last = els[els.length - 1];
+        if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last.focus(); } }
+        else            { if (document.activeElement === last)  { e.preventDefault(); first.focus(); } }
+      });
+    }
+
+    function closeModal(modal) {
+      modal.style.display = 'none';
+      var opener = modal._opener;
+      if (opener) { opener.focus(); }
+    }
+
+    document.addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      var action = btn.dataset.action;
+      if (action === 'open-modal') {
+        var modal = document.getElementById(btn.dataset.target);
+        if (modal) { modal._opener = btn; modal.style.display = 'flex'; trapFocus(modal); }
+      }
+      if (action === 'close-modal') {
+        var modal = document.getElementById(btn.dataset.target);
+        if (modal) { closeModal(modal); }
+      }
+    });
+  })();
 </script>
 </body>
 </html>
