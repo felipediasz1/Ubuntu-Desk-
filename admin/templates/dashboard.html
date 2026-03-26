@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Dispositivos — Ubuntu Desk Admin{% endblock %}
-{% block page_title %}Dispositivos{% endblock %}
+{% block title %}Dashboard — Ubuntu Desk Admin{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
 
 {% block content %}
 
-<!-- Stats -->
+<!-- Stats de dispositivos -->
 <div class="stat-grid">
   <div class="stat-card">
     <div class="val">{{ total }}</div>
@@ -18,6 +18,56 @@
     <div class="val" style="color: var(--muted)">{{ total - active }}</div>
     <div class="lbl">Offline</div>
   </div>
+</div>
+
+<!-- Métricas de sessões -->
+<div class="stat-grid" style="margin-top:12px;margin-bottom:24px;">
+  <div class="stat-card">
+    <div class="val text-display">{{ sessions_today }}</div>
+    <div class="lbl">Conexões hoje</div>
+  </div>
+  <div class="stat-card">
+    <div class="val text-display">{{ sessions_week }}</div>
+    <div class="lbl">Conexões esta semana</div>
+  </div>
+</div>
+
+<!-- Gráfico de conexões por dia -->
+{% if daily_labels %}
+<div class="card" style="margin-bottom:20px;">
+  <h3 style="margin-bottom:16px;color:var(--cyan);font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Conexões por dia (últimos 7 dias)</h3>
+  <canvas id="sessions-chart" height="80"></canvas>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script nonce="{{ csp_nonce }}">
+  new Chart(document.getElementById('sessions-chart'), {
+    type: 'bar',
+    data: {
+      labels: {{ daily_labels | tojson }},
+      datasets: [{
+        label: 'Conexões',
+        data: {{ daily_data | tojson }},
+        backgroundColor: 'rgba(6, 182, 212, 0.3)',
+        borderColor: '#06B6D4',
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { color: '#94A3B8' }, grid: { color: 'rgba(51,65,85,0.5)' } },
+        x: { ticks: { color: '#94A3B8' }, grid: { display: false } }
+      }
+    }
+  });
+</script>
+{% endif %}
+
+<!-- Link para histórico completo -->
+<div style="text-align:right;margin-bottom:20px;">
+  <a href="{{ url_for('history') }}" class="btn btn-ghost">Ver histórico completo →</a>
 </div>
 
 <!-- DB aviso -->

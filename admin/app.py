@@ -15,7 +15,7 @@ import time
 import csv
 import io
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from functools import wraps
 from urllib.parse import urlparse, urljoin
 from flask import Flask, render_template, redirect, url_for, request, session, g, abort, send_file, jsonify, Response, flash
@@ -440,12 +440,37 @@ def index():
     total     = len(peers)
     active    = sum(1 for p in peers if p["status"] == 1)
 
-    return render_template("index.html",
+    # Métricas de sessões
+    today    = date.today().isoformat()
+    week_ago = (date.today() - timedelta(days=7)).isoformat()
+    sconn = _get_sessions_db()
+    sessions_today = sconn.execute(
+        "SELECT COUNT(*) FROM sessions WHERE started_at >= ?", (today,)
+    ).fetchone()[0]
+    sessions_week = sconn.execute(
+        "SELECT COUNT(*) FROM sessions WHERE started_at >= ?", (week_ago,)
+    ).fetchone()[0]
+    daily_rows = sconn.execute("""
+        SELECT date(started_at) as day, COUNT(*) as cnt
+        FROM sessions
+        WHERE started_at >= ?
+        GROUP BY day ORDER BY day
+    """, (week_ago,)).fetchall()
+    sconn.close()
+
+    daily_labels = [r["day"] for r in daily_rows]
+    daily_data   = [r["cnt"]  for r in daily_rows]
+
+    return render_template("dashboard.html",
         peers=peers,
         total=total,
         active=active,
         db_exists=db_exists,
         db_path=DB_PATH,
+        sessions_today=sessions_today,
+        sessions_week=sessions_week,
+        daily_labels=daily_labels,
+        daily_data=daily_data,
     )
 
 @app.route("/peer/<peer_id>")
