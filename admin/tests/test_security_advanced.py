@@ -53,3 +53,42 @@ def test_password_valid():
 
 def test_password_exact_minimum():
     assert _validate_password("Abcde1f!") is None
+
+def test_ip_allowlist_blocks_unknown_ip(monkeypatch, tmp_path):
+    monkeypatch.setenv("ALLOWED_IPS", "192.168.1.0/24")
+    monkeypatch.setenv("ADMIN_PASSWORD", "test-admin-pass")
+    monkeypatch.setenv("API_DB", str(tmp_path / "api.db"))
+    monkeypatch.setenv("AUDIT_DB", str(tmp_path / "audit.db"))
+    monkeypatch.setenv("SESSIONS_DB", str(tmp_path / "sessions.db"))
+    flask_app.app.config["TESTING"] = True
+    # Recarregar ALLOWED_NETWORKS com o monkeypatch
+    import ipaddress
+    flask_app._ALLOWED_NETWORKS = [ipaddress.ip_network("192.168.1.0/24", strict=False)]
+    with flask_app.app.test_client() as c:
+        r = c.get("/login")
+        assert r.status_code == 403
+    flask_app._ALLOWED_NETWORKS = []  # limpar após o teste
+
+def test_ip_allowlist_empty_allows_all(monkeypatch, tmp_path):
+    monkeypatch.setenv("ADMIN_PASSWORD", "test-admin-pass")
+    monkeypatch.setenv("API_DB", str(tmp_path / "api.db"))
+    monkeypatch.setenv("AUDIT_DB", str(tmp_path / "audit.db"))
+    monkeypatch.setenv("SESSIONS_DB", str(tmp_path / "sessions.db"))
+    flask_app._ALLOWED_NETWORKS = []
+    flask_app.app.config["TESTING"] = True
+    with flask_app.app.test_client() as c:
+        r = c.get("/health")
+        assert r.status_code == 200
+
+def test_health_exempt_from_ip_allowlist(monkeypatch, tmp_path):
+    monkeypatch.setenv("ADMIN_PASSWORD", "test-admin-pass")
+    monkeypatch.setenv("API_DB", str(tmp_path / "api.db"))
+    monkeypatch.setenv("AUDIT_DB", str(tmp_path / "audit.db"))
+    monkeypatch.setenv("SESSIONS_DB", str(tmp_path / "sessions.db"))
+    import ipaddress
+    flask_app._ALLOWED_NETWORKS = [ipaddress.ip_network("10.0.0.1", strict=False)]
+    flask_app.app.config["TESTING"] = True
+    with flask_app.app.test_client() as c:
+        r = c.get("/health")
+        assert r.status_code == 200
+    flask_app._ALLOWED_NETWORKS = []

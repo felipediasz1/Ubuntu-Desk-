@@ -61,6 +61,18 @@ TOTP_SECRET   = os.environ.get("TOTP_SECRET", "")  # Opcional: ativar 2FA no adm
 RECORDING_DIR = os.environ.get("RECORDING_DIR", os.path.join(os.path.dirname(__file__), "data", "recordings"))
 PORT          = int(os.environ.get("PORT", 8088))
 LOG_FORMAT    = os.environ.get("LOG_FORMAT", "").lower()
+
+# ── IP Allowlist ───────────────────────────────────────────────────────────────
+import ipaddress as _ipaddress
+
+_ALLOWED_NETWORKS = []
+_raw_ips = os.environ.get("ALLOWED_IPS", "").strip()
+if _raw_ips:
+    for _entry in _raw_ips.split(","):
+        try:
+            _ALLOWED_NETWORKS.append(_ipaddress.ip_network(_entry.strip(), strict=False))
+        except ValueError:
+            pass
 _app_start_time = time.time()
 
 # ── Rate limiting (proteção contra brute-force) ───────────────────────────────
@@ -472,6 +484,19 @@ def enforce_admin_2fa():
     conn.close()
     if row and not row["totp_enabled"]:
         return redirect(url_for("totp_setup"))
+
+@app.before_request
+def check_ip_allowlist():
+    if not _ALLOWED_NETWORKS:
+        return
+    if request.path == "/health":
+        return
+    try:
+        client_ip = _ipaddress.ip_address(request.remote_addr)
+        if not any(client_ip in net for net in _ALLOWED_NETWORKS):
+            return jsonify({"error": "IP not allowed"}), 403
+    except ValueError:
+        return jsonify({"error": "IP not allowed"}), 403
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def _safe_redirect(target: str) -> str:
