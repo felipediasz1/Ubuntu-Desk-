@@ -100,6 +100,11 @@ _ACTION_CATEGORY = {
     "user_deleted":        "security",
     "ab_shared_written":   "admin",
     "ab_viewed":           "access",
+    "peer_blocked":        "security",
+    "peer_unblocked":      "admin",
+    "history_viewed":      "access",
+    "2fa_enabled":         "security",
+    "2fa_disabled":        "security",
 }
 
 def _categorize(action: str) -> str:
@@ -208,6 +213,11 @@ def get_db():
             return None
         g.db = sqlite3.connect(DB_PATH, check_same_thread=False)
         g.db.row_factory = sqlite3.Row
+        # Migração: adicionar coluna blocked se não existir
+        cols = [r[1] for r in g.db.execute("PRAGMA table_info(peer)").fetchall()]
+        if "blocked" not in cols:
+            g.db.execute("ALTER TABLE peer ADD COLUMN blocked INTEGER DEFAULT 0")
+            g.db.commit()
     return g.db
 
 @app.teardown_appcontext
@@ -419,7 +429,7 @@ def logout():
 @login_required
 def index():
     rows = query(
-        "SELECT id, info, status, created_at, note FROM peer ORDER BY created_at DESC"
+        "SELECT id, info, status, created_at, note, blocked FROM peer ORDER BY created_at DESC"
     )
     peers = []
     for r in rows:
@@ -434,6 +444,7 @@ def index():
             "status":     r["status"],
             "created_at": fmt_dt(r["created_at"]),
             "note":       r["note"] or "",
+            "blocked":    r["blocked"] or 0,
         })
 
     db_exists = os.path.exists(DB_PATH)
@@ -477,7 +488,7 @@ def index():
 @login_required
 def peer_detail(peer_id):
     rows = query(
-        "SELECT id, info, status, created_at, note FROM peer WHERE id = ?",
+        "SELECT id, info, status, created_at, note, blocked FROM peer WHERE id = ?",
         (peer_id,)
     )
     if not rows:
@@ -494,10 +505,35 @@ def peer_detail(peer_id):
         "status":     r["status"],
         "created_at": fmt_dt(r["created_at"]),
         "note":       r["note"] or "",
+        "blocked":    r["blocked"] or 0,
         "info_raw":   json.dumps(info, indent=2, ensure_ascii=False),
     }
     audit("peer_visualizado", f"id={peer_id} hostname={peer['hostname']}")
     return render_template("peer.html", peer=peer)
+
+@app.route("/peers/<peer_id>/block", methods=["POST"])
+@login_required
+def peer_block(peer_id):
+    db = get_db()
+    if db:
+        db.execute("UPDATE peer SET blocked=1 WHERE id=?", (peer_id,))
+        db.commit()
+        audit("peer_blocked", f"peer_id={peer_id}")
+        flash("Device marcado como bloqueado (visão admin apenas).", "success")
+    return redirect(url_for("peer_detail", peer_id=peer_id))
+
+
+@app.route("/peers/<peer_id>/unblock", methods=["POST"])
+@login_required
+def peer_unblock(peer_id):
+    db = get_db()
+    if db:
+        db.execute("UPDATE peer SET blocked=0 WHERE id=?", (peer_id,))
+        db.commit()
+        audit("peer_unblocked", f"peer_id={peer_id}")
+        flash("Bloqueio removido.", "success")
+    return redirect(url_for("peer_detail", peer_id=peer_id))
+
 
 @app.route("/peer/<peer_id>/note", methods=["POST"])
 @login_required

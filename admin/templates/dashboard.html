@@ -113,6 +113,9 @@
           {% else %}
             <span class="badge badge-offline">Offline</span>
           {% endif %}
+          {% if p.blocked %}
+            <span class="badge" style="background:rgba(248,113,113,0.15);color:var(--red);margin-left:6px;">Bloqueado</span>
+          {% endif %}
         </td>
         <td style="color: var(--muted); font-size: 13px;">{{ p.created_at }}</td>
       </tr>

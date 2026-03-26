@@ -64,6 +64,28 @@
 
 </div>
 
+<!-- Ação de bloqueio -->
+<div class="card" style="margin-bottom:20px;">
+  <h3 style="margin-bottom:16px;color:var(--cyan);font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Acesso</h3>
+  <div style="padding-top:4px;">
+    {% if peer.blocked %}
+    <div class="alert alert-warn" style="margin-bottom:12px;">
+      ⚠ Este device está marcado como bloqueado (visão admin — não afeta conexões no servidor).
+    </div>
+    <form method="POST" action="{{ url_for('peer_unblock', peer_id=peer.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-ghost">Remover bloqueio</button>
+    </form>
+    {% else %}
+    <form method="POST" action="{{ url_for('peer_block', peer_id=peer.id) }}"
+          data-confirm="Marcar {{ peer.id }} como bloqueado? Isso é apenas uma marcação admin e não impede conexões.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-ghost" style="color:var(--red);">Marcar como bloqueado (admin)</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
 <!-- Info bruta -->
 <div class="card">
   <h3 style="margin-bottom: 12px; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Raw Info</h3>
