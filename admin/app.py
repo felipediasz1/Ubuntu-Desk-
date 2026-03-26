@@ -921,6 +921,7 @@ def login_totp():
             session["last_active"] = time.time()
             session.permanent      = True
             audit("login_ok", f"username={username} (2FA)")
+            _dispatch_alert("login_ok", {"username": username, "ip": ip, "method": "totp"})
             return redirect(url_for("index"))
         if _verify_recovery_code(username, code):
             _clear_attempts(ip)
@@ -930,6 +931,7 @@ def login_totp():
             session["last_active"] = time.time()
             session.permanent      = True
             audit("login_ok", f"username={username} (recovery code)")
+            _dispatch_alert("login_ok", {"username": username, "ip": ip, "method": "recovery_code"})
             return redirect(url_for("index"))
         _record_attempt(ip)
         rem = _remaining_attempts(ip)
@@ -2132,7 +2134,7 @@ def _dispatch_alert(event: str, detail: dict):
                 return
             payload = _j.dumps({
                 "event": event,
-                "ts": _dt.datetime.utcnow().isoformat(),
+                "ts": _dt.datetime.now(_dt.timezone.utc).isoformat(),
                 "detail": detail
             }).encode()
             if cfg["webhook_url"]:
