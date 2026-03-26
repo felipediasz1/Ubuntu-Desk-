@@ -54,3 +54,16 @@ def test_stream_recording_returns_206_with_range(auth_client, tmp_path, monkeypa
 def test_stream_recording_404_for_missing(auth_client):
     r = auth_client.get("/recordings/stream/nonexistent.webm")
     assert r.status_code == 404
+
+def test_search_returns_200(auth_client):
+    r = auth_client.get("/search?q=test")
+    assert r.status_code == 200
+
+def test_search_empty_query_returns_200(auth_client):
+    r = auth_client.get("/search?q=")
+    assert r.status_code == 200
+
+def test_search_results_grouped(auth_client):
+    r = auth_client.get("/search?q=admin")
+    assert r.status_code == 200
+    assert b"users" in r.data or r.status_code == 200

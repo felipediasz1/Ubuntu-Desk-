@@ -683,6 +683,41 @@ def index():
         pages=pages,
     )
 
+@app.route("/search")
+@login_required
+def global_search():
+    q = request.args.get("q", "").strip()
+    results = {"peers": [], "users": [], "audit": []}
+    if len(q) >= 2:
+        like = f"%{q}%"
+        db = get_db()
+        if db:
+            rows = db.execute(
+                "SELECT id, info, status FROM peer WHERE id LIKE ? OR note LIKE ? LIMIT 5",
+                (like, like)
+            ).fetchall()
+            results["peers"] = [
+                {"id": r["id"], "hostname": (parse_info(r["info"]) or {}).get("hostname", "—")}
+                for r in rows
+            ]
+        conn = _get_api_db()
+        urows = conn.execute(
+            "SELECT username, role FROM users WHERE username LIKE ? LIMIT 5", (like,)
+        ).fetchall()
+        results["users"] = [{"username": r[0], "role": r[1]} for r in urows]
+        conn.close()
+        try:
+            aconn = _get_audit_db()
+            arows = aconn.execute(
+                "SELECT ts, action, detail FROM audit_log WHERE action LIKE ? OR detail LIKE ? ORDER BY id DESC LIMIT 5",
+                (like, like)
+            ).fetchall()
+            results["audit"] = [{"ts": r[0], "action": r[1], "detail": r[2] or ""} for r in arows]
+            aconn.close()
+        except Exception:
+            pass
+    return render_template("search.html", q=q, results=results)
+
 @app.route("/peer/<peer_id>")
 @login_required
 def peer_detail(peer_id):

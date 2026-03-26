@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Busca — Ubuntu Desk Admin{% endblock %}
+{% block page_title %}Busca{% endblock %}
+{% block content %}
+<div style="margin-bottom:24px;">
+  <form action="/search" method="get" style="display:flex;gap:8px;align-items:center;">
+    <input type="search" name="q" value="{{ q | e }}" placeholder="Buscar devices, usuários, auditoria..."
+           autofocus autocomplete="off"
+           style="flex:1;max-width:400px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:14px;">
+    <button type="submit" class="btn btn-cyan">Buscar</button>
+  </form>
+</div>
+
+{% if not q %}
+<p style="color:var(--muted);">Digite algo para buscar.</p>
+{% else %}
+
+<section>
+  <h2 style="font-size:16px;font-weight:600;margin-bottom:12px;color:var(--text);">
+    Devices <span style="color:var(--muted);font-weight:400;">({{ results.peers|length }})</span>
+  </h2>
+  {% if results.peers %}
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table>
+      <thead>
+        <tr><th>ID</th><th>Hostname</th></tr>
+      </thead>
+      <tbody>
+      {% for p in results.peers %}
+      <tr>
+        <td><a href="{{ url_for('peer_detail', peer_id=p.id) }}" class="id-code">{{ p.id }}</a></td>
+        <td>{{ p.hostname }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><p>Nenhum device encontrado.</p></div>
+  {% endif %}
+</section>
+
+<section style="margin-top:2rem">
+  <h2 style="font-size:16px;font-weight:600;margin-bottom:12px;color:var(--text);">
+    Usuários <span style="color:var(--muted);font-weight:400;">({{ results.users|length }})</span>
+  </h2>
+  {% if results.users %}
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table>
+      <thead>
+        <tr><th>Username</th><th>Role</th></tr>
+      </thead>
+      <tbody>
+      {% for u in results.users %}
+      <tr>
+        <td>{{ u.username }}</td>
+        <td><span class="badge {% if u.role == 'admin' %}badge-online{% else %}badge-offline{% endif %}">{{ u.role }}</span></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><p>Nenhum usuário encontrado.</p></div>
+  {% endif %}
+</section>
+
+<section style="margin-top:2rem">
+  <h2 style="font-size:16px;font-weight:600;margin-bottom:12px;color:var(--text);">
+    Audit Log <span style="color:var(--muted);font-weight:400;">({{ results.audit|length }})</span>
+  </h2>
+  {% if results.audit %}
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table>
+      <thead>
+        <tr><th>Data</th><th>Ação</th><th>Detalhe</th></tr>
+      </thead>
+      <tbody>
+      {% for a in results.audit %}
+      <tr>
+        <td style="white-space:nowrap;color:var(--muted);">{{ a.ts }}</td>
+        <td>{{ a.action }}</td>
+        <td style="color:var(--muted);">{{ a.detail }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><p>Nenhum registro encontrado.</p></div>
+  {% endif %}
+</section>
+
+{% endif %}
+{% endblock %}

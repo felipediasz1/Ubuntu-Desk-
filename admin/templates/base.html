@@ -337,7 +337,14 @@
   <div class="main">
     <div class="topbar">
       <h1>{% block page_title %}Painel{% endblock %}</h1>
-      <span style="color: var(--muted); font-size: 13px;">Admin</span>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <form action="/search" method="get" class="search-form" style="display:inline-flex;gap:4px;">
+          <input type="search" name="q" id="global-search" placeholder="Buscar... (/)"
+                 autocomplete="off"
+                 style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px;width:180px;">
+        </form>
+        <span style="color: var(--muted); font-size: 13px;">Admin</span>
+      </div>
     </div>
     {% if default_password_warning %}
     <div style="background:rgba(251,191,36,0.08);border-bottom:1px solid rgba(251,191,36,0.3);color:var(--yellow);padding:10px 24px;font-size:13px;display:flex;align-items:center;gap:8px;">
@@ -422,6 +429,15 @@
       }
     });
   })();
+</script>
+<script nonce="{{ csp_nonce }}">
+document.addEventListener('keydown', function(e) {
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+    e.preventDefault();
+    var s = document.getElementById('global-search');
+    if (s) s.focus();
+  }
+});
 </script>
 </body>
 </html>
