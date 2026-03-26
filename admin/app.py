@@ -59,7 +59,8 @@ SESSIONS_DB   = os.environ.get("SESSIONS_DB", os.path.join(os.path.dirname(__fil
 ADMIN_PASS    = os.environ.get("ADMIN_PASSWORD", "ubuntu-desk-admin")
 TOTP_SECRET   = os.environ.get("TOTP_SECRET", "")  # Opcional: ativar 2FA no admin
 RECORDING_DIR = os.environ.get("RECORDING_DIR", os.path.join(os.path.dirname(__file__), "data", "recordings"))
-PORT          = int(os.environ.get("PORT", 8088))
+PORT           = int(os.environ.get("PORT", 8088))
+PEERS_PAGE_SIZE = 50
 LOG_FORMAT    = os.environ.get("LOG_FORMAT", "").lower()
 
 # ── IP Allowlist ───────────────────────────────────────────────────────────────
@@ -615,8 +616,15 @@ def index():
     sort_col = request.args.get("sort", "created_at")
     sort_dir = request.args.get("dir", "desc")
     col_expr, direction = _safe_sort("peers", sort_col, sort_dir)
+    page        = max(1, request.args.get("page", 1, type=int))
+    peer_count  = query("SELECT COUNT(*) AS cnt FROM peer")
+    total_peers = peer_count[0]["cnt"] if peer_count else 0
+    pages       = max(1, (total_peers + PEERS_PAGE_SIZE - 1) // PEERS_PAGE_SIZE)
+    page        = min(page, pages)
+    offset      = (page - 1) * PEERS_PAGE_SIZE
     rows = query(
-        f"SELECT id, info, status, created_at, note, blocked FROM peer ORDER BY {col_expr} {direction}"
+        f"SELECT id, info, status, created_at, note, blocked FROM peer ORDER BY {col_expr} {direction} LIMIT ? OFFSET ?",
+        (PEERS_PAGE_SIZE, offset)
     )
     peers = []
     for r in rows:
@@ -635,7 +643,7 @@ def index():
         })
 
     db_exists = os.path.exists(DB_PATH)
-    total     = len(peers)
+    total     = total_peers
     active    = sum(1 for p in peers if p["status"] == 1)
 
     # Métricas de sessões
@@ -671,6 +679,8 @@ def index():
         daily_data=daily_data,
         sort_col=sort_col,
         sort_dir=sort_dir,
+        page=page,
+        pages=pages,
     )
 
 @app.route("/peer/<peer_id>")

@@ -131,6 +131,23 @@
   {% endif %}
 </div>
 
+{% if pages > 1 %}
+{% set base_url = "?sort=" ~ sort_col ~ "&dir=" ~ sort_dir %}
+<nav class="pagination" aria-label="Paginação" style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:16px;">
+  {% if page > 1 %}
+  <a href="{{ base_url }}&page={{ page - 1 }}" class="btn btn-ghost" style="padding:6px 14px;font-size:13px;">&#8592; Anterior</a>
+  {% else %}
+  <span class="btn btn-ghost" style="padding:6px 14px;font-size:13px;opacity:0.35;cursor:default;">&#8592; Anterior</span>
+  {% endif %}
+  <span style="color:var(--muted);font-size:13px;">Página {{ page }} de {{ pages }}</span>
+  {% if page < pages %}
+  <a href="{{ base_url }}&page={{ page + 1 }}" class="btn btn-ghost" style="padding:6px 14px;font-size:13px;">Próxima &#8594;</a>
+  {% else %}
+  <span class="btn btn-ghost" style="padding:6px 14px;font-size:13px;opacity:0.35;cursor:default;">Próxima &#8594;</span>
+  {% endif %}
+</nav>
+{% endif %}
+
 {% if peers %}
 <script nonce="{{ csp_nonce }}">
   var input = document.getElementById('peer-search');

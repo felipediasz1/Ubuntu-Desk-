@@ -26,3 +26,15 @@ def test_sort_valid_column_returns_200(auth_client):
 def test_sort_dir_invalid_defaults_asc(auth_client):
     r = auth_client.get("/?sort=status&dir=DROP")
     assert r.status_code == 200
+
+def test_pagination_page_1_returns_200(auth_client):
+    r = auth_client.get("/?page=1")
+    assert r.status_code == 200
+
+def test_pagination_invalid_page_defaults_to_1(auth_client):
+    r = auth_client.get("/?page=abc")
+    assert r.status_code == 200
+
+def test_pagination_page_beyond_total_returns_200(auth_client):
+    r = auth_client.get("/?page=9999")
+    assert r.status_code == 200
