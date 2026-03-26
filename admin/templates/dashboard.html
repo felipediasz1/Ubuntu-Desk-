@@ -103,7 +103,13 @@
     <tbody>
       {% for p in peers %}
       <tr>
-        <td><a href="{{ url_for('peer_detail', peer_id=p.id) }}" class="id-code">{{ p.id }}</a></td>
+        <td>
+          <form method="post" action="{{ url_for('peer_star' if not p.starred else 'peer_unstar', peer_id=p.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn-icon" title="{{ 'Remover favorito' if p.starred else 'Favoritar' }}" style="background:none;border:none;cursor:pointer;color:{{ '#FCD34D' if p.starred else 'var(--text-muted)' }};font-size:1.1em;padding:0 4px 0 0;vertical-align:middle;">{{ '★' if p.starred else '☆' }}</button>
+          </form>
+          <a href="{{ url_for('peer_detail', peer_id=p.id) }}" class="id-code">{{ p.id }}</a>
+        </td>
         <td>{{ p.hostname }}</td>
         <td style="color: var(--muted); font-size: 13px;">{{ p.os }}</td>
         <td style="color: var(--muted);">{{ p.username }}</td>

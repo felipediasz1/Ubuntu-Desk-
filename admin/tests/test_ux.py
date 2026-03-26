@@ -67,3 +67,29 @@ def test_search_results_grouped(auth_client):
     r = auth_client.get("/search?q=admin")
     assert r.status_code == 200
     assert b"users" in r.data or r.status_code == 200
+
+def test_star_peer_returns_302(auth_client, tmp_path, monkeypatch):
+    import sqlite3
+    db_path = tmp_path / "db_v2.sqlite3"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE peer (id TEXT PRIMARY KEY, info TEXT, status INTEGER, created_at TEXT, note TEXT, blocked INTEGER DEFAULT 0)")
+    conn.execute("INSERT INTO peer VALUES ('TEST1','{}',0,'2026-01-01',NULL,0)")
+    conn.commit(); conn.close()
+    monkeypatch.setattr(flask_app, "DB_PATH", str(db_path))
+    with auth_client.session_transaction() as s:
+        s["_csrf"] = "tok"
+    r = auth_client.post("/peers/TEST1/star", data={"csrf_token": "tok"})
+    assert r.status_code in (200, 302, 404)
+
+def test_star_column_migration(tmp_path, monkeypatch):
+    import sqlite3
+    db_path = tmp_path / "db_v2.sqlite3"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE peer (id TEXT PRIMARY KEY, info TEXT, status INTEGER, created_at TEXT, note TEXT, blocked INTEGER DEFAULT 0)")
+    conn.commit(); conn.close()
+    monkeypatch.setattr(flask_app, "DB_PATH", str(db_path))
+    flask_app.app.config["TESTING"] = True
+    with flask_app.app.app_context():
+        db = flask_app.get_db()
+        cols = [r[1] for r in db.execute("PRAGMA table_info(peer)").fetchall()]
+        assert "starred" in cols

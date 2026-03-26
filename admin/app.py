@@ -287,6 +287,9 @@ def get_db():
         if "blocked" not in cols:
             g.db.execute("ALTER TABLE peer ADD COLUMN blocked INTEGER DEFAULT 0")
             g.db.commit()
+        if "starred" not in cols:
+            g.db.execute("ALTER TABLE peer ADD COLUMN starred INTEGER DEFAULT 0")
+            g.db.commit()
     return g.db
 
 @app.teardown_appcontext
@@ -623,7 +626,7 @@ def index():
     page        = min(page, pages)
     offset      = (page - 1) * PEERS_PAGE_SIZE
     rows = query(
-        f"SELECT id, info, status, created_at, note, blocked FROM peer ORDER BY {col_expr} {direction} LIMIT ? OFFSET ?",
+        f"SELECT id, info, status, created_at, note, blocked, starred FROM peer ORDER BY starred DESC, {col_expr} {direction} LIMIT ? OFFSET ?",
         (PEERS_PAGE_SIZE, offset)
     )
     peers = []
@@ -640,6 +643,7 @@ def index():
             "created_at": fmt_dt(r["created_at"]),
             "note":       r["note"] or "",
             "blocked":    r["blocked"] or 0,
+            "starred":    r["starred"] or 0,
         })
 
     db_exists = os.path.exists(DB_PATH)
@@ -767,6 +771,26 @@ def peer_unblock(peer_id):
         audit("peer_unblocked", f"peer_id={peer_id}")
         flash("Bloqueio removido.", "success")
     return redirect(url_for("peer_detail", peer_id=peer_id))
+
+
+@app.route("/peers/<peer_id>/star", methods=["POST"])
+@login_required
+def peer_star(peer_id):
+    db = get_db()
+    if db:
+        db.execute("UPDATE peer SET starred=1 WHERE id=?", (peer_id,))
+        db.commit()
+    return redirect(request.referrer or url_for("index"))
+
+
+@app.route("/peers/<peer_id>/unstar", methods=["POST"])
+@login_required
+def peer_unstar(peer_id):
+    db = get_db()
+    if db:
+        db.execute("UPDATE peer SET starred=0 WHERE id=?", (peer_id,))
+        db.commit()
+    return redirect(request.referrer or url_for("index"))
 
 
 # ── Configurações / 2FA ───────────────────────────────────────────────────────
