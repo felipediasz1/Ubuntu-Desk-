@@ -577,6 +577,7 @@ def login():
     if request.method == "POST":
         if _is_locked(ip):
             audit("login_bloqueado", "IP bloqueado por excesso de tentativas")
+            _dispatch_alert("login_bloqueado", {"ip": ip})
             error = "Muitas tentativas falhas. Aguarde 15 minutos."
         else:
             pwd      = request.form.get("password", "")
@@ -864,7 +865,7 @@ def settings_alerts():
     conn = _get_api_db()
     if request.method == "POST":
         import json as _json
-        _known_events = ["login_ok", "login_falha", "peer_blocked", "peer_unblocked", "user_created", "user_deleted"]
+        _known_events = ["login_ok", "login_falha", "login_bloqueado", "peer_blocked", "peer_unblocked", "user_created", "user_deleted"]
         selected = [e for e in _known_events if request.form.get(f"event_{e}")]
         data = {
             "webhook_url":    request.form.get("webhook_url", "").strip(),
@@ -897,6 +898,37 @@ def settings_alerts():
     return render_template("settings_alerts.html", cfg=cfg, active_events=active_events)
 
 
+@app.route("/settings/alerts/test", methods=["POST"])
+@login_required
+@admin_required
+def settings_alerts_test():
+    detail = {"message": "Teste de alerta Ubuntu Desk", "origin": "manual"}
+    results = _send_alert_sync("test", detail)
+    _log_alert_results("test", detail, results)
+    if not results:
+        flash("Nenhum canal configurado (webhook ou SMTP).", "error")
+    else:
+        ok   = [c for c, s, _ in results if s]
+        fail = [(c, e) for c, s, e in results if not s]
+        if ok:
+            flash(f"Alerta enviado com sucesso via: {', '.join(ok)}.", "success")
+        for c, e in fail:
+            flash(f"Falha no canal {c}: {e}", "error")
+    return redirect(url_for("settings_alerts"))
+
+
+@app.route("/settings/alerts/log")
+@login_required
+@admin_required
+def settings_alerts_log():
+    conn = _get_api_db()
+    logs = conn.execute(
+        "SELECT * FROM alert_log ORDER BY id DESC LIMIT 100"
+    ).fetchall()
+    conn.close()
+    return render_template("settings_alerts_log.html", logs=logs)
+
+
 @app.route("/login/totp", methods=["GET", "POST"])
 def login_totp():
     if "pending_totp_username" not in session:
@@ -907,6 +939,7 @@ def login_totp():
     if request.method == "POST":
         if _is_locked(ip):
             audit("login_bloqueado", f"username={username} IP bloqueado (2FA)")
+            _dispatch_alert("login_bloqueado", {"username": username, "ip": ip})
             session.clear()
             return redirect(url_for("login"))
         code = request.form.get("code", "").strip()
@@ -1406,6 +1439,18 @@ def _init_api_db(conn):
         )
     """)
     conn.execute("INSERT OR IGNORE INTO alert_config (id) VALUES (1)")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS alert_log (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            event   TEXT    NOT NULL,
+            ts      TEXT    NOT NULL,
+            channel TEXT    NOT NULL,
+            success INTEGER NOT NULL DEFAULT 0,
+            error   TEXT    DEFAULT '',
+            detail  TEXT    DEFAULT ''
+        )
+    """)
 
     conn.commit()
 
@@ -2120,54 +2165,84 @@ def _backup_loop():
         _cleanup_old_backups()
 
 
-def _dispatch_alert(event: str, detail: dict):
-    import threading as _t
-    def _send():
-        try:
-            conn = _get_api_db()
-            cfg = conn.execute("SELECT * FROM alert_config WHERE id=1").fetchone()
-            conn.close()
-            if not cfg:
-                return
-            import json as _j, datetime as _dt
-            events = _j.loads(cfg["alert_events"] or "[]")
-            if events and event not in events:
-                return
-            payload = _j.dumps({
-                "event": event,
-                "ts": _dt.datetime.now(_dt.timezone.utc).isoformat(),
-                "detail": detail
-            }).encode()
-            if cfg["webhook_url"]:
+def _send_alert_sync(event: str, detail: dict) -> list:
+    """Envia alerta de forma síncrona. Retorna lista de (channel, success, error_msg)."""
+    import json as _j, datetime as _dt
+    results = []
+    try:
+        conn = _get_api_db()
+        cfg = conn.execute("SELECT * FROM alert_config WHERE id=1").fetchone()
+        conn.close()
+        if not cfg:
+            return results
+        events = _j.loads(cfg["alert_events"] or "[]")
+        if events and event not in events:
+            return results
+        payload = _j.dumps({
+            "event": event,
+            "ts": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+            "detail": detail,
+        }).encode()
+        if cfg["webhook_url"]:
+            try:
                 import urllib.request, hmac as _hmac, hashlib as _hashlib
                 sig = "sha256=" + _hmac.new(
                     (cfg["webhook_secret"] or "").encode(), payload, _hashlib.sha256
                 ).hexdigest()
                 req = urllib.request.Request(
                     cfg["webhook_url"], data=payload,
-                    headers={"Content-Type": "application/json", "X-Ubuntu-Desk-Signature": sig}
+                    headers={"Content-Type": "application/json", "X-Ubuntu-Desk-Signature": sig},
                 )
-                try:
-                    urllib.request.urlopen(req, timeout=5)
-                except Exception:
-                    pass
-            if cfg["smtp_host"] and cfg["smtp_to"]:
+                urllib.request.urlopen(req, timeout=5)
+                results.append(("webhook", True, ""))
+            except Exception as e:
+                results.append(("webhook", False, str(e)))
+        if cfg["smtp_host"] and cfg["smtp_to"]:
+            try:
                 import smtplib
                 from email.mime.text import MIMEText
                 msg = MIMEText(f"Evento: {event}\n\n{_j.dumps(detail, indent=2)}", "plain")
                 msg["Subject"] = f"[Ubuntu Desk] Alerta: {event}"
-                msg["From"] = cfg["smtp_from"] or cfg["smtp_user"]
-                msg["To"] = cfg["smtp_to"]
-                try:
-                    with smtplib.SMTP(cfg["smtp_host"], cfg["smtp_port"], timeout=5) as s:
-                        if cfg["smtp_user"]:
-                            s.starttls()
-                            s.login(cfg["smtp_user"], cfg["smtp_pass"])
-                        s.send_message(msg)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                msg["From"]    = cfg["smtp_from"] or cfg["smtp_user"]
+                msg["To"]      = cfg["smtp_to"]
+                with smtplib.SMTP(cfg["smtp_host"], cfg["smtp_port"], timeout=5) as s:
+                    if cfg["smtp_user"]:
+                        s.starttls()
+                        s.login(cfg["smtp_user"], cfg["smtp_pass"])
+                    s.send_message(msg)
+                results.append(("smtp", True, ""))
+            except Exception as e:
+                results.append(("smtp", False, str(e)))
+    except Exception as e:
+        results.append(("internal", False, str(e)))
+    return results
+
+
+def _log_alert_results(event: str, detail: dict, results: list):
+    """Persiste resultados de envio na tabela alert_log."""
+    if not results:
+        return
+    import json as _j, datetime as _dt
+    ts = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    detail_str = _j.dumps(detail)
+    try:
+        conn = _get_api_db()
+        for channel, success, error in results:
+            conn.execute(
+                "INSERT INTO alert_log (event, ts, channel, success, error, detail) VALUES (?,?,?,?,?,?)",
+                (event, ts, channel, 1 if success else 0, error or "", detail_str),
+            )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def _dispatch_alert(event: str, detail: dict):
+    import threading as _t
+    def _send():
+        results = _send_alert_sync(event, detail)
+        _log_alert_results(event, detail, results)
     _t.Thread(target=_send, daemon=True).start()
 
 

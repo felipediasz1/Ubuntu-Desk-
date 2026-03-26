@@ -89,12 +89,13 @@
 
       <div style="display:flex;flex-direction:column;gap:10px;" id="events-list">
         {% set events = [
-          ("login_ok",       "Login bem-sucedido"),
-          ("login_falha",    "Tentativa de login falha"),
-          ("peer_blocked",   "Device bloqueado"),
-          ("peer_unblocked", "Device desbloqueado"),
-          ("user_created",   "Usuário criado"),
-          ("user_deleted",   "Usuário excluído"),
+          ("login_ok",        "Login bem-sucedido"),
+          ("login_falha",     "Tentativa de login falha"),
+          ("login_bloqueado", "IP bloqueado por excesso de tentativas"),
+          ("peer_blocked",    "Device bloqueado"),
+          ("peer_unblocked",  "Device desbloqueado"),
+          ("user_created",    "Usuário criado"),
+          ("user_deleted",    "Usuário excluído"),
         ] %}
         {% for ev_key, ev_label in events %}
         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
@@ -108,11 +109,30 @@
       </div>
     </div>
 
-    <div style="display:flex;gap:10px;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
       <button type="submit" class="btn btn-cyan">Salvar configurações</button>
       <a href="{{ url_for('settings') }}" class="btn btn-ghost">Cancelar</a>
     </div>
   </form>
+
+  <!-- Testar alerta -->
+  <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+    <div>
+      <span style="font-size:14px;font-weight:600;">Testar configuração</span>
+      <p style="font-size:13px;color:var(--muted);margin-top:2px;">Envia um evento <code>test</code> via webhook e/ou SMTP para verificar se está funcionando.</p>
+    </div>
+    <form method="POST" action="{{ url_for('settings_alerts_test') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-ghost">Enviar teste</button>
+    </form>
+  </div>
+
+  <!-- Link para log -->
+  <div style="margin-top:16px;text-align:right;">
+    <a href="{{ url_for('settings_alerts_log') }}" style="font-size:13px;color:var(--muted);">
+      Ver log de alertas →
+    </a>
+  </div>
 
 </div>
 
