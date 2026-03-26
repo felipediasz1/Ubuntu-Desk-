@@ -1817,6 +1817,49 @@ def _users_list_data():
     ]
 
 
+# ── Backup automático SQLite ───────────────────────────────────────────────────
+BACKUP_DIR            = os.environ.get("BACKUP_DIR", os.path.join(os.path.dirname(__file__), "data", "backups"))
+BACKUP_RETENTION_DAYS = int(os.environ.get("BACKUP_RETENTION_DAYS", 7))
+BACKUP_INTERVAL_HOURS = int(os.environ.get("BACKUP_INTERVAL_HOURS", 24))
+
+def _backup_databases(backup_dir: str = BACKUP_DIR):
+    today = time.strftime("%Y-%m-%d")
+    dest = os.path.join(backup_dir, today)
+    os.makedirs(dest, exist_ok=True)
+    for name, path in [("api.db", API_DB), ("audit.db", AUDIT_DB), ("sessions.db", SESSIONS_DB)]:
+        if not os.path.exists(path):
+            continue
+        try:
+            src  = sqlite3.connect(path)
+            dst  = sqlite3.connect(os.path.join(dest, name))
+            src.backup(dst)
+            src.close()
+            dst.close()
+        except Exception:
+            pass
+
+def _cleanup_old_backups(backup_dir: str = BACKUP_DIR, retention_days: int = BACKUP_RETENTION_DAYS):
+    if not os.path.isdir(backup_dir):
+        return
+    import shutil
+    dirs = sorted(
+        [d for d in os.listdir(backup_dir) if os.path.isdir(os.path.join(backup_dir, d))],
+        reverse=True
+    )
+    for old_dir in dirs[retention_days:]:
+        shutil.rmtree(os.path.join(backup_dir, old_dir), ignore_errors=True)
+
+def _backup_loop():
+    interval = BACKUP_INTERVAL_HOURS * 3600
+    while True:
+        time.sleep(interval)
+        _backup_databases()
+        _cleanup_old_backups()
+
+
 if __name__ == "__main__":
     _startup_security_check()
+    import threading as _threading
+    _t = _threading.Thread(target=_backup_loop, daemon=True)
+    _t.start()
     app.run(host="0.0.0.0", port=PORT, debug=False)
