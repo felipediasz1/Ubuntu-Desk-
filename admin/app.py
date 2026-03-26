@@ -440,6 +440,28 @@ def check_session_timeout():
         session["last_active"] = time.time()
         session.permanent = True
 
+# ── Enforce 2FA for admin role ────────────────────────────────────────────────
+_2FA_EXEMPT_PREFIXES = ("/login", "/logout", "/static", "/health", "/settings/2fa")
+
+@app.before_request
+def enforce_admin_2fa():
+    if app.config.get("TESTING"):
+        return
+    if not session.get("logged_in"):
+        return
+    if session.get("role", "admin") != "admin":
+        return
+    if any(request.path.startswith(p) for p in _2FA_EXEMPT_PREFIXES):
+        return
+    username = session.get("username", "admin")
+    conn = _get_api_db()
+    row = conn.execute(
+        "SELECT totp_enabled FROM users WHERE username=?", (username,)
+    ).fetchone()
+    conn.close()
+    if row and not row["totp_enabled"]:
+        return redirect(url_for("totp_setup"))
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def _safe_redirect(target: str) -> str:
     """Valida que o redirect aponta para o mesmo host (evita open redirect CWE-601)."""
