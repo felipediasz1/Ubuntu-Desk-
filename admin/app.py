@@ -916,6 +916,33 @@ def download_recording(filename):
     audit("gravacao_download", f"arquivo={safe}")
     return send_file(fpath, as_attachment=True)
 
+
+@app.route("/recordings/stream/<path:filename>")
+@login_required
+def stream_recording(filename):
+    safe  = os.path.basename(filename)
+    fpath = os.path.join(RECORDING_DIR, safe)
+    if not os.path.isfile(fpath):
+        abort(404)
+    file_size = os.path.getsize(fpath)
+    range_header = request.headers.get("Range")
+    if range_header:
+        m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+        if m:
+            start = int(m.group(1))
+            end   = int(m.group(2)) if m.group(2) else file_size - 1
+            end   = min(end, file_size - 1)
+            length = end - start + 1
+            with open(fpath, "rb") as f:
+                f.seek(start)
+                data = f.read(length)
+            rv = Response(data, 206, mimetype="video/webm")
+            rv.headers["Content-Range"]  = f"bytes {start}-{end}/{file_size}"
+            rv.headers["Accept-Ranges"]  = "bytes"
+            rv.headers["Content-Length"] = str(length)
+            return rv
+    return send_file(fpath, mimetype="video/webm")
+
 _RECORD_MAX_FILE_BYTES = int(os.environ.get("RECORD_MAX_FILE_MB", 500)) * 1024 * 1024
 _RECORD_MAX_CHUNK_BYTES = 4 * 1024 * 1024  # 4 MB por chunk
 

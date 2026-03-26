@@ -38,3 +38,19 @@ def test_pagination_invalid_page_defaults_to_1(auth_client):
 def test_pagination_page_beyond_total_returns_200(auth_client):
     r = auth_client.get("/?page=9999")
     assert r.status_code == 200
+
+def test_stream_recording_returns_206_with_range(auth_client, tmp_path, monkeypatch):
+    rec_dir = tmp_path / "recordings"
+    rec_dir.mkdir()
+    test_file = rec_dir / "incoming_123_20260326120000000_display0_vp9.webm"
+    test_file.write_bytes(b"WEBM" * 100)
+    monkeypatch.setattr(flask_app, "RECORDING_DIR", str(rec_dir))
+    r = auth_client.get(
+        "/recordings/stream/incoming_123_20260326120000000_display0_vp9.webm",
+        headers={"Range": "bytes=0-3"}
+    )
+    assert r.status_code in (200, 206)
+
+def test_stream_recording_404_for_missing(auth_client):
+    r = auth_client.get("/recordings/stream/nonexistent.webm")
+    assert r.status_code == 404

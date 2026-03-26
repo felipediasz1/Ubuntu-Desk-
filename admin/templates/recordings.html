@@ -63,6 +63,10 @@
           <a href="{{ url_for('download_recording', filename=r.filename) }}" class="btn btn-ghost" style="padding:4px 14px; font-size:12px;">
             ⬇ Download
           </a>
+          <video controls width="100%" style="max-height:240px; background:#000; border-radius:6px; margin-top:8px;">
+            <source src="{{ url_for('stream_recording', filename=r.filename) }}" type="video/webm">
+            <a href="{{ url_for('download_recording', filename=r.filename) }}">Download</a>
+          </video>
         </td>
       </tr>
       {% endfor %}
