@@ -72,28 +72,37 @@ Se o IP mudou (ex: de 192.168.18.4 para o IP do servidor de produção):
 
 ## 8. SSL/TLS com nginx (recomendado para produção)
 
+O setup SSL usa nginx como reverse proxy + Certbot (Let's Encrypt) via Docker.
+Os arquivos `nginx/` e `docker-compose.ssl.yml` já estão prontos no repositório.
+
+**Pré-requisito:** o domínio deve apontar para o IP do servidor antes de rodar.
+
 ```bash
-apt install nginx certbot python3-certbot-nginx -y
+cd /opt/ubuntu-desk/server
 
-cat > /etc/nginx/sites-available/ubuntu-desk <<'EOF'
-server {
-    server_name admin.SEU_DOMINIO.com;
-    location / {
-        proxy_pass http://127.0.0.1:8088;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-EOF
-
-ln -s /etc/nginx/sites-available/ubuntu-desk /etc/nginx/sites-enabled/
-certbot --nginx -d admin.SEU_DOMINIO.com
+# Configura nginx, obtém certificado e sobe stack com SSL
+sudo bash setup-ssl.sh admin.SEU_DOMINIO.com contato@seuemail.com
 ```
 
-Após ativar HTTPS: setar `HTTPS_ONLY=1` no `server/.env` e reiniciar:
+Esse script:
+1. Substitui o placeholder de domínio no config do nginx
+2. Sobe nginx temporário para validação do Certbot (HTTP)
+3. Obtém certificado Let's Encrypt via webroot
+4. Sobe a stack completa: `docker compose -f docker-compose.yml -f docker-compose.ssl.yml up -d`
+5. Inicia renovação automática (container certbot)
 
+**Após ativar SSL:** o `HTTPS_ONLY=1` é setado automaticamente e a porta 8088 fica fechada ao público (nginx fica na frente).
+
+Para subir/parar a stack com SSL no futuro:
 ```bash
-docker compose -f server/docker-compose.yml restart admin
+# Subir
+docker compose -f docker-compose.yml -f docker-compose.ssl.yml up -d
+
+# Parar
+docker compose -f docker-compose.yml -f docker-compose.ssl.yml down
+
+# Renovar certificado manualmente
+docker exec ubuntu-desk-certbot certbot renew
 ```
 
 ## 9. Ativar 2FA no painel admin (recomendado)
@@ -111,7 +120,7 @@ docker compose -f server/docker-compose.yml restart admin
 ## Checklist de validação pós-deploy
 
 - [ ] `docker compose ps` — todos os containers running
-- [ ] Painel admin acessível em `http://SEU_IP:8088`
+- [ ] Painel admin acessível (HTTP: `http://SEU_IP:8088` ou HTTPS: `https://SEU_DOMINIO`)
 - [ ] Login com senha alterada (não `ubuntu-desk-admin`)
 - [ ] 2FA configurado
 - [ ] Cliente Windows conecta e gera ID
