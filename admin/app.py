@@ -302,6 +302,17 @@ def _hash_user_password(pwd: str) -> str:
     h = hashlib.pbkdf2_hmac("sha256", pwd.encode(), salt, 260_000)
     return salt.hex() + "$" + h.hex()
 
+_SYMBOL_RE = re.compile(r"[!@#$%^&*\-_+=]")
+
+def _validate_password(pwd: str):
+    if len(pwd) < 8:
+        return "Senha deve ter ao menos 8 caracteres."
+    if not any(c.isdigit() for c in pwd):
+        return "Senha deve conter ao menos 1 número."
+    if not _SYMBOL_RE.search(pwd):
+        return "Senha deve conter ao menos 1 símbolo (!@#$%^&*-_+=)."
+    return None
+
 def _verify_user_password(pwd: str, stored: str) -> bool:
     """Verify password against stored 'salt_hex$hash_hex'."""
     try:
@@ -1728,9 +1739,10 @@ def users_create():
     if username == "__shared__" or not username:
         return render_template("users.html",
             error="Username inválido.", users=_users_list_data()), 400
-    if len(password) < 8:
-        return render_template("users.html",
-            error="Senha deve ter ao menos 8 caracteres.", users=_users_list_data()), 400
+    pwd_error = _validate_password(password)
+    if pwd_error:
+        flash(pwd_error, "error")
+        return redirect(url_for("users_list"))
     if role not in ("user", "manager"):
         return render_template("users.html",
             error="Role inválida.", users=_users_list_data()), 400
@@ -1774,8 +1786,9 @@ def users_reset_password(username):
     if username == "admin":
         return redirect(url_for("users_list"))
     password = request.form.get("password", "")
-    if len(password) < 8:
-        flash("Senha deve ter ao menos 8 caracteres.", "error")
+    pwd_error = _validate_password(password)
+    if pwd_error:
+        flash(pwd_error, "error")
         return redirect(url_for("users_list"))
     conn = _get_api_db()
     conn.execute(

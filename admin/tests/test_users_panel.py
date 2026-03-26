@@ -37,7 +37,7 @@ def test_create_user(client):
     csrf = m.group(1) if m else ""
     rv = client.post("/users/new", data={
         "username": "techtest",
-        "password": "securepwd1",
+        "password": "SecurePwd1!",
         "role": "user",
         "csrf_token": csrf,
     }, follow_redirects=True)
@@ -114,7 +114,7 @@ def test_reset_password_invalidates_old_token(client):
     m = re.search(r'name="csrf_token" value="([^"]+)"', rv.data.decode())
     csrf = m.group(1) if m else ""
     client.post("/users/resetme/password", data={
-        "password": "newpass12345", "csrf_token": csrf
+        "password": "NewPass123!", "csrf_token": csrf
     }, follow_redirects=True)
     # old token must be invalid
     rv2 = client.get("/api/currentUser",

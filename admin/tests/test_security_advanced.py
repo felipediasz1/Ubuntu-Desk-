@@ -36,3 +36,20 @@ def test_health_not_affected_by_2fa_enforcement(client):
 def test_login_routes_not_affected_by_2fa_enforcement(client):
     r = client.get("/login")
     assert r.status_code == 200
+
+from app import _validate_password
+
+def test_password_too_short():
+    assert _validate_password("abc1!") is not None
+
+def test_password_no_digit():
+    assert _validate_password("abcdefgh!") is not None
+
+def test_password_no_symbol():
+    assert _validate_password("abcdefgh1") is not None
+
+def test_password_valid():
+    assert _validate_password("StrongP4ss!") is None
+
+def test_password_exact_minimum():
+    assert _validate_password("Abcde1f!") is None
