@@ -87,9 +87,6 @@
       <h3 style="margin-bottom:4px;color:var(--cyan);font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Eventos</h3>
       <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Deixe todos desmarcados para receber alertas de qualquer evento.</p>
 
-      {% set active_events = (cfg.alert_events or '[]') | tojson | default('[]') %}
-      {% set ev_list = cfg.alert_events | default('[]') %}
-
       <div style="display:flex;flex-direction:column;gap:10px;" id="events-list">
         {% set events = [
           ("login_ok",       "Login bem-sucedido"),
@@ -102,7 +99,7 @@
         {% for ev_key, ev_label in events %}
         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
           <input type="checkbox" name="event_{{ ev_key }}" value="{{ ev_key }}"
-                 {% if ev_key in ev_list %}checked{% endif %}
+                 {% if ev_key in active_events %}checked{% endif %}
                  style="width:16px;height:16px;accent-color:var(--cyan);">
           <span style="font-size:14px;">{{ ev_label }}</span>
           <code style="font-size:12px;color:var(--muted);margin-left:auto;">{{ ev_key }}</code>

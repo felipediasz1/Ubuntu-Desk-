@@ -604,6 +604,7 @@ def login():
                 _record_attempt(ip)
                 rem = _remaining_attempts(ip)
                 audit("login_falha", f"tentativas restantes={rem}")
+                _dispatch_alert("login_falha", {"ip": ip, "remaining": rem})
                 error = f"Credenciais inválidas. {rem} tentativa(s) restante(s)."
 
     return render_template("login.html", error=error, totp_required=totp_required)
@@ -889,9 +890,11 @@ def settings_alerts():
         conn.close()
         flash("Configurações de alertas salvas.", "success")
         return redirect(url_for("settings_alerts"))
+    import json as _json
     cfg = conn.execute("SELECT * FROM alert_config WHERE id=1").fetchone()
     conn.close()
-    return render_template("settings_alerts.html", cfg=cfg)
+    active_events = _json.loads(cfg["alert_events"] or "[]") if cfg else []
+    return render_template("settings_alerts.html", cfg=cfg, active_events=active_events)
 
 
 @app.route("/login/totp", methods=["GET", "POST"])
