@@ -35,6 +35,25 @@ def client(tmp_dbs):
         yield c
 
 
+@pytest.fixture
+def client_with_sessions(tmp_path):
+    """Client with sessions DB override."""
+    api_db      = str(tmp_path / "api.db")
+    audit_db    = str(tmp_path / "audit.db")
+    sessions_db = str(tmp_path / "sessions.db")
+    flask_app.API_DB      = api_db
+    flask_app.AUDIT_DB    = audit_db
+    flask_app.SESSIONS_DB = sessions_db
+    flask_app._api_db_initialized      = False
+    flask_app._audit_db_initialized    = False
+    flask_app._sessions_db_initialized = False
+    flask_app._audit_purged            = False
+    flask_app.app.config["TESTING"] = True
+    flask_app._get_api_db().close()
+    with flask_app.app.test_client() as c:
+        yield c
+
+
 def _get_csrf(client):
     rv = client.get("/login")
     m = re.search(r'name="csrf_token" value="([^"]+)"', rv.data.decode())

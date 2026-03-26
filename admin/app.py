@@ -46,6 +46,7 @@ _DEFAULT_PASSWORD = "ubuntu-desk-admin"
 DB_PATH       = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "..", "server", "data", "db_v2.sqlite3"))
 AUDIT_DB      = os.environ.get("AUDIT_DB", os.path.join(os.path.dirname(__file__), "data", "audit.db"))
 API_DB        = os.environ.get("API_DB", os.path.join(os.path.dirname(__file__), "data", "api.db"))
+SESSIONS_DB   = os.environ.get("SESSIONS_DB", os.path.join(os.path.dirname(__file__), "data", "sessions.db"))
 ADMIN_PASS    = os.environ.get("ADMIN_PASSWORD", "ubuntu-desk-admin")
 TOTP_SECRET   = os.environ.get("TOTP_SECRET", "")  # Opcional: ativar 2FA no admin
 RECORDING_DIR = os.environ.get("RECORDING_DIR", os.path.join(os.path.dirname(__file__), "data", "recordings"))
@@ -75,9 +76,10 @@ def _remaining_attempts(ip: str) -> int:
 
 # ── Audit log (SQLite próprio) ────────────────────────────────────────────────
 AUDIT_RETENTION_DAYS = int(os.environ.get("AUDIT_RETENTION_DAYS", 90))
-_audit_purged = False          # purge uma vez por processo
-_audit_db_initialized = False  # DDL executado uma vez por processo
-_api_db_initialized   = False  # DDL executado uma vez por processo
+_audit_purged = False              # purge uma vez por processo
+_audit_db_initialized    = False  # DDL executado uma vez por processo
+_api_db_initialized      = False  # DDL executado uma vez por processo
+_sessions_db_initialized = False  # DDL executado uma vez por processo
 
 # Mapeamento ação → categoria
 _ACTION_CATEGORY = {
@@ -136,6 +138,30 @@ def _get_audit_db():
         conn.commit()
         _audit_db_initialized = True
     return conn
+
+def _get_sessions_db():
+    global _sessions_db_initialized
+    os.makedirs(os.path.dirname(SESSIONS_DB), exist_ok=True)
+    conn = sqlite3.connect(SESSIONS_DB)
+    conn.row_factory = sqlite3.Row
+    if not _sessions_db_initialized:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                peer_from     TEXT    NOT NULL,
+                peer_to       TEXT    NOT NULL,
+                hostname_from TEXT,
+                hostname_to   TEXT,
+                started_at    DATETIME NOT NULL,
+                ended_at      DATETIME,
+                duration_secs INTEGER,
+                created_by    TEXT
+            )
+        """)
+        conn.commit()
+        _sessions_db_initialized = True
+    return conn
+
 
 def _purge_old_audit():
     global _audit_purged
@@ -643,6 +669,51 @@ def audit_log():
         page=page,
         total_pages=total_pages,
         total_filtered=total_filtered,
+    )
+
+
+@app.route("/history")
+@login_required
+def history():
+    page        = max(1, request.args.get("page", 1, type=int))
+    per_page    = 50
+    peer_filter = request.args.get("peer", "").strip()
+    date_from   = request.args.get("from", "").strip()
+    date_to     = request.args.get("to", "").strip()
+
+    conn   = _get_sessions_db()
+    where  = []
+    params = []
+
+    if peer_filter:
+        where.append("(peer_from = ? OR peer_to = ?)")
+        params += [peer_filter, peer_filter]
+    if date_from:
+        where.append("started_at >= ?")
+        params.append(date_from)
+    if date_to:
+        where.append("started_at <= ?")
+        params.append(date_to + " 23:59:59")
+
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+    total = conn.execute(f"SELECT COUNT(*) FROM sessions {where_sql}", params).fetchone()[0]
+    rows  = conn.execute(
+        f"SELECT * FROM sessions {where_sql} ORDER BY started_at DESC LIMIT ? OFFSET ?",
+        params + [per_page, (page - 1) * per_page]
+    ).fetchall()
+    conn.close()
+
+    audit("history_viewed", f"page={page} peer={peer_filter}")
+    return render_template(
+        "history.html",
+        sessions=rows,
+        page=page,
+        total=total,
+        per_page=per_page,
+        peer_filter=peer_filter,
+        date_from=date_from,
+        date_to=date_to,
+        pages=max(1, (total + per_page - 1) // per_page),
     )
 
 
