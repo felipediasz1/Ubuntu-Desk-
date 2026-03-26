@@ -60,6 +60,7 @@ ADMIN_PASS    = os.environ.get("ADMIN_PASSWORD", "ubuntu-desk-admin")
 TOTP_SECRET   = os.environ.get("TOTP_SECRET", "")  # Opcional: ativar 2FA no admin
 RECORDING_DIR = os.environ.get("RECORDING_DIR", os.path.join(os.path.dirname(__file__), "data", "recordings"))
 PORT          = int(os.environ.get("PORT", 8088))
+LOG_FORMAT    = os.environ.get("LOG_FORMAT", "").lower()
 _app_start_time = time.time()
 
 # ── Rate limiting (proteção contra brute-force) ───────────────────────────────
@@ -368,12 +369,30 @@ def set_security_headers(response):
         response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
     return response
 
+
+# ── Structured JSON logging ────────────────────────────────────────────────────
+@app.after_request
+def structured_log(response):
+    if LOG_FORMAT == "json":
+        import sys as _sys, json as _json
+        duration_ms = int((time.time() - g.get("req_start", time.time())) * 1000)
+        print(_json.dumps({
+            "ts":          time.strftime("%Y-%m-%d %H:%M:%S"),
+            "method":      request.method,
+            "path":        request.path,
+            "status":      response.status_code,
+            "duration_ms": duration_ms,
+            "ip":          request.remote_addr,
+        }), file=_sys.stdout, flush=True)
+    return response
+
 # ── CSP nonce + CSRF + context processor ─────────────────────────────────────
 @app.before_request
 def generate_csp_nonce():
     if request.path == "/health":
         return
     g.csp_nonce = secrets.token_hex(16)
+    g.req_start = time.time()
 
 def _get_csrf_token() -> str:
     """Retorna (ou cria) o token CSRF da sessão atual."""
