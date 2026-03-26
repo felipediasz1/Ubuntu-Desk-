@@ -937,6 +937,7 @@ def login_totp():
         rem = _remaining_attempts(ip)
         error = f"Código inválido. {rem} tentativa(s) restante(s)."
         audit("login_falha", f"username={username} (2FA) tentativas_restantes={rem}")
+        _dispatch_alert("login_falha", {"username": username, "ip": ip, "remaining": rem, "method": "totp"})
     return render_template("login_totp.html", error=error)
 
 
