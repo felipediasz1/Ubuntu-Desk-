@@ -109,6 +109,35 @@ def test_alerts_test_no_channel(client):
     assert "Nenhum canal" in rv.data.decode()
 
 
+def test_alerts_test_bypass_filter(client):
+    """Botão testar envia mesmo com eventos filtrados (bypass_filter=True)."""
+    import app as flask_app
+    # Configura filtro que NÃO inclui 'test'
+    _login(client)
+    csrf = _get_csrf(client)
+    client.post("/settings/alerts", data={
+        "csrf_token": csrf,
+        "webhook_url": "http://localhost:19999/invalid",
+        "webhook_secret": "",
+        "smtp_host": "",
+        "smtp_port": "587",
+        "smtp_user": "",
+        "smtp_pass": "",
+        "smtp_from": "",
+        "smtp_to": "",
+        "event_login_ok": "login_ok",  # filtro ativo, sem 'test'
+    }, follow_redirects=True)
+
+    # Com bypass_filter=True deve tentar enviar (e falhar, pois a URL é inválida)
+    results = flask_app._send_alert_sync("test", {"msg": "x"}, bypass_filter=True)
+    assert len(results) == 1
+    assert results[0][0] == "webhook"
+
+    # Sem bypass_filter deve ser bloqueado pelo filtro
+    results_filtered = flask_app._send_alert_sync("test", {"msg": "x"}, bypass_filter=False)
+    assert results_filtered == []
+
+
 def test_alerts_test_logs_attempt(client):
     """_send_alert_sync com webhook inválido → registra falha no alert_log."""
     _login(client)

@@ -903,7 +903,7 @@ def settings_alerts():
 @admin_required
 def settings_alerts_test():
     detail = {"message": "Teste de alerta Ubuntu Desk", "origin": "manual"}
-    results = _send_alert_sync("test", detail)
+    results = _send_alert_sync("test", detail, bypass_filter=True)
     _log_alert_results("test", detail, results)
     if not results:
         flash("Nenhum canal configurado (webhook ou SMTP).", "error")
@@ -2165,7 +2165,7 @@ def _backup_loop():
         _cleanup_old_backups()
 
 
-def _send_alert_sync(event: str, detail: dict) -> list:
+def _send_alert_sync(event: str, detail: dict, bypass_filter: bool = False) -> list:
     """Envia alerta de forma síncrona. Retorna lista de (channel, success, error_msg)."""
     import json as _j, datetime as _dt
     results = []
@@ -2176,7 +2176,7 @@ def _send_alert_sync(event: str, detail: dict) -> list:
         if not cfg:
             return results
         events = _j.loads(cfg["alert_events"] or "[]")
-        if events and event not in events:
+        if not bypass_filter and events and event not in events:
             return results
         payload = _j.dumps({
             "event": event,
