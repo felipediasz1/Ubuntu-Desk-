@@ -60,6 +60,7 @@ ADMIN_PASS    = os.environ.get("ADMIN_PASSWORD", "ubuntu-desk-admin")
 TOTP_SECRET   = os.environ.get("TOTP_SECRET", "")  # Opcional: ativar 2FA no admin
 RECORDING_DIR = os.environ.get("RECORDING_DIR", os.path.join(os.path.dirname(__file__), "data", "recordings"))
 PORT          = int(os.environ.get("PORT", 8088))
+_app_start_time = time.time()
 
 # ── Rate limiting (proteção contra brute-force) ───────────────────────────────
 _login_attempts: dict = defaultdict(list)
@@ -370,6 +371,8 @@ def set_security_headers(response):
 # ── CSP nonce + CSRF + context processor ─────────────────────────────────────
 @app.before_request
 def generate_csp_nonce():
+    if request.path == "/health":
+        return
     g.csp_nonce = secrets.token_hex(16)
 
 def _get_csrf_token() -> str:
@@ -381,6 +384,8 @@ def _get_csrf_token() -> str:
 @app.before_request
 def check_csrf():
     """Valida token CSRF em todos os POSTs de rotas web (não API)."""
+    if request.path == "/health":
+        return
     if request.method not in ("POST", "PUT", "DELETE", "PATCH"):
         return
     if request.path.startswith("/api/"):
@@ -403,6 +408,8 @@ def inject_globals():
 # ── Session timeout ───────────────────────────────────────────────────────────
 @app.before_request
 def check_session_timeout():
+    if request.path == "/health":
+        return
     # Rotas da API usam Bearer token — não precisam de session cookie
     if request.path.startswith("/api/"):
         return
@@ -441,6 +448,27 @@ def fmt_dt(dt_str):
         return dt_str
 
 # ── Rotas ─────────────────────────────────────────────────────────────────────
+@app.route("/health")
+def health():
+    results = {}
+    for name, path in [("api", API_DB), ("audit", AUDIT_DB), ("sessions", SESSIONS_DB)]:
+        try:
+            conn = sqlite3.connect(path, timeout=2)
+            conn.execute("SELECT 1")
+            conn.close()
+            results[name] = True
+        except Exception:
+            results[name] = False
+    peer_ok = os.path.exists(DB_PATH)
+    all_ok = all(results.values())
+    return jsonify({
+        "status": "ok" if all_ok else "degraded",
+        "db": all_ok,
+        "db_detail": {**results, "peer": peer_ok},
+        "uptime_seconds": int(time.time() - _app_start_time),
+    }), 200 if all_ok else 503
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = None
