@@ -30,6 +30,11 @@ app = Flask(__name__)
 _SECRET_KEY_FILE = os.path.join(os.path.dirname(__file__), ".secret_key")
 
 def _load_secret_key():
+    # Prioridade 1: variável de ambiente SECRET_KEY (recomendado em produção)
+    env_key = os.environ.get("SECRET_KEY", "").strip()
+    if env_key and env_key not in ("ALTERAR_OBRIGATORIO", "mude-esta-chave-antes-de-ir-para-producao", "mude-esta-chave-em-producao"):
+        return env_key
+    # Prioridade 2: arquivo persistente em disco (gerado automaticamente na 1ª execução)
     if os.path.exists(_SECRET_KEY_FILE):
         return open(_SECRET_KEY_FILE).read().strip()
     key = secrets.token_hex(32)
@@ -323,6 +328,16 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("logged_in"):
+            return redirect(url_for("login", next=request.path))
+        if session.get("role", "admin") != "admin":
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated
+
 # ── Security headers ──────────────────────────────────────────────────────────
 @app.after_request
 def set_security_headers(response):
@@ -344,8 +359,12 @@ def set_security_headers(response):
         f"img-src 'self' data:; "
         f"font-src 'self'; "
         f"object-src 'none'; "
-        f"base-uri 'self';"
+        f"base-uri 'self'; "
+        f"form-action 'self'; "
+        f"frame-ancestors 'self';"
     )
+    if app.config.get("SESSION_COOKIE_SECURE"):
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
     return response
 
 # ── CSP nonce + CSRF + context processor ─────────────────────────────────────
@@ -642,13 +661,19 @@ def login_totp():
     if "pending_totp_username" not in session:
         return redirect(url_for("login"))
     username = session["pending_totp_username"]
+    ip = request.remote_addr
     error = None
     if request.method == "POST":
+        if _is_locked(ip):
+            audit("login_bloqueado", f"username={username} IP bloqueado (2FA)")
+            session.clear()
+            return redirect(url_for("login"))
         code = request.form.get("code", "").strip()
         conn = _get_api_db()
         row  = conn.execute("SELECT totp_secret FROM users WHERE username=?", (username,)).fetchone()
         conn.close()
         if row and pyotp.TOTP(row["totp_secret"]).verify(code, valid_window=1):
+            _clear_attempts(ip)
             session.pop("pending_totp_username")
             session["logged_in"]   = True
             session["username"]    = username
@@ -657,6 +682,7 @@ def login_totp():
             audit("login_ok", f"username={username} (2FA)")
             return redirect(url_for("index"))
         if _verify_recovery_code(username, code):
+            _clear_attempts(ip)
             session.pop("pending_totp_username")
             session["logged_in"]   = True
             session["username"]    = username
@@ -664,8 +690,10 @@ def login_totp():
             session.permanent      = True
             audit("login_ok", f"username={username} (recovery code)")
             return redirect(url_for("index"))
-        error = "Código inválido."
-        audit("login_falha", f"username={username} (2FA)")
+        _record_attempt(ip)
+        rem = _remaining_attempts(ip)
+        error = f"Código inválido. {rem} tentativa(s) restante(s)."
+        audit("login_falha", f"username={username} (2FA) tentativas_restantes={rem}")
     return render_template("login_totp.html", error=error)
 
 
@@ -750,6 +778,9 @@ def download_recording(filename):
     audit("gravacao_download", f"arquivo={safe}")
     return send_file(fpath, as_attachment=True)
 
+_RECORD_MAX_FILE_BYTES = int(os.environ.get("RECORD_MAX_FILE_MB", 500)) * 1024 * 1024
+_RECORD_MAX_CHUNK_BYTES = 4 * 1024 * 1024  # 4 MB por chunk
+
 @app.route("/api/record", methods=["POST"])
 def api_record():
     """Recebe chunks de gravação enviados pelo cliente Ubuntu Desk."""
@@ -758,15 +789,30 @@ def api_record():
         abort(401)
     action   = request.form.get("action", "")
     filename = os.path.basename(request.form.get("filename", "unknown.webm"))
+    if not filename or filename in (".", ".."):
+        abort(400)
     os.makedirs(RECORDING_DIR, exist_ok=True)
     fpath = os.path.join(RECORDING_DIR, filename)
     if action == "new":
+        # Não sobrescreve arquivo existente — gera nome único para evitar perda de dados
+        if os.path.exists(fpath):
+            base, ext = os.path.splitext(filename)
+            filename = f"{base}_{secrets.token_hex(4)}{ext}"
+            fpath = os.path.join(RECORDING_DIR, filename)
         open(fpath, "wb").close()
     elif action in ("part", "tail"):
         chunk = request.files.get("data")
         if chunk:
+            # Verificar tamanho do chunk
+            chunk_data = chunk.read(_RECORD_MAX_CHUNK_BYTES + 1)
+            if len(chunk_data) > _RECORD_MAX_CHUNK_BYTES:
+                abort(413)
+            # Verificar tamanho total acumulado do arquivo
+            current_size = os.path.getsize(fpath) if os.path.exists(fpath) else 0
+            if current_size + len(chunk_data) > _RECORD_MAX_FILE_BYTES:
+                abort(413)
             with open(fpath, "ab") as f:
-                f.write(chunk.read())
+                f.write(chunk_data)
     elif action == "remove":
         if os.path.exists(fpath):
             os.remove(fpath)
@@ -1560,9 +1606,18 @@ def apidocs():
 
 def _startup_security_check():
     import sys
-    w = []
+    # ── Bloqueadores — impedem o servidor de subir em produção com config insegura ──
     if ADMIN_PASS == _DEFAULT_PASSWORD:
-        w.append("ADMIN_PASSWORD está no valor padrão — altere antes de expor na rede")
+        print(
+            "\n[Ubuntu Desk Admin] ERRO CRÍTICO DE SEGURANÇA:\n"
+            "  ADMIN_PASSWORD está no valor padrão ('ubuntu-desk-admin').\n"
+            "  Defina ADMIN_PASSWORD=<senha-forte> no arquivo server/.env antes de continuar.\n"
+            "  Servidor encerrado para proteger seus dados.\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    # ── Avisos — não bloqueiam, mas devem ser corrigidos antes de expor na rede ──
+    w = []
     if not TOTP_SECRET:
         w.append("2FA desativado — defina TOTP_SECRET para maior segurança")
     if not app.config.get("SESSION_COOKIE_SECURE"):
@@ -1576,7 +1631,7 @@ def _startup_security_check():
 # ── User management (web panel — admin only) ──────────────────────────────────
 
 @app.route("/users")
-@login_required
+@admin_required
 def users_list():
     conn = _get_api_db()
     rows = conn.execute(
@@ -1596,7 +1651,7 @@ def users_list():
 
 
 @app.route("/users/new", methods=["POST"])
-@login_required
+@admin_required
 def users_create():
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "")
@@ -1628,7 +1683,7 @@ def users_create():
 
 
 @app.route("/users/<username>/role", methods=["POST"])
-@login_required
+@admin_required
 def users_set_role(username):
     if username == "admin":
         return redirect(url_for("users_list"))
@@ -1645,7 +1700,7 @@ def users_set_role(username):
 
 
 @app.route("/users/<username>/password", methods=["POST"])
-@login_required
+@admin_required
 def users_reset_password(username):
     if username == "admin":
         return redirect(url_for("users_list"))
@@ -1668,7 +1723,7 @@ def users_reset_password(username):
 
 
 @app.route("/users/<username>/toggle", methods=["POST"])
-@login_required
+@admin_required
 def users_toggle(username):
     if username == "admin":
         return redirect(url_for("users_list"))
@@ -1687,7 +1742,7 @@ def users_toggle(username):
 
 
 @app.route("/users/<username>/delete", methods=["POST"])
-@login_required
+@admin_required
 def users_delete(username):
     if username == "admin":
         return redirect(url_for("users_list"))
@@ -1703,7 +1758,7 @@ def users_delete(username):
 
 
 @app.route("/users/<username>/ab")
-@login_required
+@admin_required
 def users_view_ab(username):
     conn = _get_api_db()
     row = conn.execute(
