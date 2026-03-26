@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Configurações — Ubuntu Desk Admin{% endblock %}
+{% block page_title %}Configurações{% endblock %}
+
+{% block content %}
+
+<div class="card" style="max-width:560px;">
+  <h3 style="margin-bottom:16px;color:var(--cyan);font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Autenticação em Duas Etapas (2FA)</h3>
+
+  {% if totp_enabled %}
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+    <span class="badge badge-online">● Ativo</span>
+    <span style="color:var(--muted);font-size:13px;">2FA está habilitado para sua conta.</span>
+  </div>
+  <form method="POST" action="{{ url_for('totp_disable') }}"
+        data-confirm="Desativar 2FA? Sua conta ficará protegida apenas por senha.">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="btn btn-ghost" style="color:var(--red);">Desativar 2FA</button>
+  </form>
+  {% else %}
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+    <span class="badge badge-offline">Inativo</span>
+    <span style="color:var(--muted);font-size:13px;">2FA não está habilitado.</span>
+  </div>
+  <a href="{{ url_for('totp_setup') }}" class="btn btn-cyan">Configurar 2FA</a>
+  {% endif %}
+</div>
+
+{% endblock %}

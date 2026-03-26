@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Configurar 2FA — Ubuntu Desk Admin{% endblock %}
+{% block page_title %}Configurar Autenticação 2FA{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:480px;">
+  <h3 style="margin-bottom:16px;color:var(--cyan);">Escanear QR Code</h3>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">Abra seu app autenticador (Google Authenticator, Authy, etc.) e escaneie o QR code abaixo.</p>
+  <div style="text-align:center;margin-bottom:20px;">
+    <img src="data:image/png;base64,{{ qr_b64 }}" alt="QR Code 2FA" style="border-radius:8px;">
+  </div>
+  <p style="color:var(--muted);font-size:12px;margin-bottom:16px;">Ou insira o código manualmente: <code style="color:var(--cyan);">{{ secret }}</code></p>
+  <form method="POST" action="{{ url_for('totp_enable') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="totp-code" style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px;">Código de confirmação (6 dígitos)</label>
+    <input id="totp-code" type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code"
+           style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);margin-bottom:12px;font-size:20px;letter-spacing:8px;text-align:center;"
+           autofocus>
+    <button type="submit" class="btn btn-cyan" style="width:100%;">Ativar 2FA</button>
+  </form>
+</div>
+{% endblock %}

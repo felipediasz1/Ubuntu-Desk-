@@ -14,10 +14,14 @@ import secrets
 import time
 import csv
 import io
+import base64
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone, date
 from functools import wraps
 from urllib.parse import urlparse, urljoin
+from io import BytesIO
+import pyotp
+import qrcode
 from flask import Flask, render_template, redirect, url_for, request, session, g, abort, send_file, jsonify, Response, flash
 
 app = Flask(__name__)
@@ -166,6 +170,33 @@ def _get_sessions_db():
         conn.commit()
         _sessions_db_initialized = True
     return conn
+
+
+def _generate_recovery_codes(username: str) -> list:
+    """Gera 8 códigos de recuperação e salva os hashes."""
+    codes = [secrets.token_urlsafe(6)[:8].upper() for _ in range(8)]
+    conn = _get_api_db()
+    conn.execute("DELETE FROM totp_recovery_codes WHERE username=?", (username,))
+    for code in codes:
+        h = hashlib.sha256(code.encode()).hexdigest()
+        conn.execute("INSERT INTO totp_recovery_codes (username, code_hash) VALUES (?,?)", (username, h))
+    conn.commit()
+    conn.close()
+    return codes
+
+
+def _verify_recovery_code(username: str, code: str) -> bool:
+    h = hashlib.sha256(code.upper().encode()).hexdigest()
+    conn = _get_api_db()
+    row = conn.execute(
+        "SELECT id FROM totp_recovery_codes WHERE username=? AND code_hash=? AND used=0",
+        (username, h)
+    ).fetchone()
+    if row:
+        conn.execute("UPDATE totp_recovery_codes SET used=1 WHERE id=?", (row["id"],))
+        conn.commit()
+    conn.close()
+    return row is not None
 
 
 def _purge_old_audit():
@@ -402,11 +433,22 @@ def login():
             audit("login_bloqueado", "IP bloqueado por excesso de tentativas")
             error = "Muitas tentativas falhas. Aguarde 15 minutos."
         else:
-            pwd  = request.form.get("password", "")
-            code = request.form.get("totp", "")
+            pwd      = request.form.get("password", "")
+            code     = request.form.get("totp", "")
+            username = request.form.get("username", "admin").strip() or "admin"
             if check_password(pwd) and check_totp(code):
                 _clear_attempts(ip)
+                # Verificar 2FA por usuário (novo sistema per-user)
+                conn2 = _get_api_db()
+                user_row = conn2.execute(
+                    "SELECT totp_enabled FROM users WHERE username=?", (username,)
+                ).fetchone()
+                conn2.close()
+                if user_row and user_row["totp_enabled"]:
+                    session["pending_totp_username"] = username
+                    return redirect(url_for("login_totp"))
                 session["logged_in"]   = True
+                session["username"]    = username
                 session["last_active"] = time.time()
                 session.permanent      = True
                 audit("login_ok")
@@ -533,6 +575,98 @@ def peer_unblock(peer_id):
         audit("peer_unblocked", f"peer_id={peer_id}")
         flash("Bloqueio removido.", "success")
     return redirect(url_for("peer_detail", peer_id=peer_id))
+
+
+# ── Configurações / 2FA ───────────────────────────────────────────────────────
+
+@app.route("/settings")
+@login_required
+def settings():
+    username = session.get("username", "admin")
+    conn = _get_api_db()
+    row = conn.execute("SELECT totp_enabled FROM users WHERE username=?", (username,)).fetchone()
+    conn.close()
+    totp_enabled = row["totp_enabled"] if row else 0
+    return render_template("settings.html", totp_enabled=totp_enabled)
+
+
+@app.route("/settings/2fa/setup")
+@login_required
+def totp_setup():
+    secret = pyotp.random_base32()
+    session["pending_totp_secret"] = secret
+    username = session.get("username", "admin")
+    totp = pyotp.TOTP(secret)
+    uri  = totp.provisioning_uri(name=username, issuer_name="Ubuntu Desk Admin")
+    img  = qrcode.make(uri)
+    buf  = BytesIO()
+    img.save(buf, format="PNG")
+    qr_b64 = base64.b64encode(buf.getvalue()).decode()
+    return render_template("settings_2fa_setup.html", qr_b64=qr_b64, secret=secret)
+
+
+@app.route("/settings/2fa/enable", methods=["POST"])
+@login_required
+def totp_enable():
+    secret = session.pop("pending_totp_secret", None)
+    code   = request.form.get("code", "").strip()
+    if not secret or not pyotp.TOTP(secret).verify(code, valid_window=1):
+        flash("Código inválido. Tente novamente.", "error")
+        return redirect(url_for("totp_setup"))
+    username = session.get("username", "admin")
+    conn = _get_api_db()
+    conn.execute("UPDATE users SET totp_secret=?, totp_enabled=1 WHERE username=?", (secret, username))
+    conn.commit()
+    conn.close()
+    recovery_codes = _generate_recovery_codes(username)
+    audit("2fa_enabled", f"username={username}")
+    flash("2FA ativado com sucesso.", "success")
+    return render_template("settings_2fa_recovery.html", codes=recovery_codes)
+
+
+@app.route("/settings/2fa/disable", methods=["POST"])
+@login_required
+def totp_disable():
+    username = session.get("username", "admin")
+    conn = _get_api_db()
+    conn.execute("UPDATE users SET totp_secret=NULL, totp_enabled=0 WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
+    audit("2fa_disabled", f"username={username}")
+    flash("2FA desativado.", "success")
+    return redirect(url_for("settings"))
+
+
+@app.route("/login/totp", methods=["GET", "POST"])
+def login_totp():
+    if "pending_totp_username" not in session:
+        return redirect(url_for("login"))
+    username = session["pending_totp_username"]
+    error = None
+    if request.method == "POST":
+        code = request.form.get("code", "").strip()
+        conn = _get_api_db()
+        row  = conn.execute("SELECT totp_secret FROM users WHERE username=?", (username,)).fetchone()
+        conn.close()
+        if row and pyotp.TOTP(row["totp_secret"]).verify(code, valid_window=1):
+            session.pop("pending_totp_username")
+            session["logged_in"]   = True
+            session["username"]    = username
+            session["last_active"] = time.time()
+            session.permanent      = True
+            audit("login_ok", f"username={username} (2FA)")
+            return redirect(url_for("index"))
+        if _verify_recovery_code(username, code):
+            session.pop("pending_totp_username")
+            session["logged_in"]   = True
+            session["username"]    = username
+            session["last_active"] = time.time()
+            session.permanent      = True
+            audit("login_ok", f"username={username} (recovery code)")
+            return redirect(url_for("index"))
+        error = "Código inválido."
+        audit("login_falha", f"username={username} (2FA)")
+    return render_template("login_totp.html", error=error)
 
 
 @app.route("/peer/<peer_id>/note", methods=["POST"])
@@ -852,6 +986,7 @@ def _get_api_db():
     global _api_db_initialized
     os.makedirs(os.path.dirname(API_DB), exist_ok=True)
     conn = sqlite3.connect(API_DB, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
     if not _api_db_initialized:
         _init_api_db(conn)
         _api_db_initialized = True
@@ -921,6 +1056,23 @@ def _init_api_db(conn):
             "INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)",
             ("admin", _hash_user_password(ADMIN_PASS), "admin", time.time()),
         )
+
+    # Migração: colunas 2FA
+    u_cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+    if "totp_secret" not in u_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN totp_secret TEXT")
+    if "totp_enabled" not in u_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0")
+
+    # Tabela de recovery codes
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS totp_recovery_codes (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            username  TEXT    NOT NULL,
+            code_hash TEXT    NOT NULL,
+            used      INTEGER DEFAULT 0
+        )
+    """)
 
     conn.commit()
 

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Códigos de Recuperação — Ubuntu Desk Admin{% endblock %}
+{% block page_title %}Códigos de Recuperação 2FA{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:480px;">
+  <div class="alert alert-warn">⚠ Salve estes códigos agora. Eles não serão exibidos novamente.</div>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">Se perder o acesso ao seu autenticador, use um destes códigos para fazer login. Cada código pode ser usado apenas uma vez.</p>
+  <div style="background:var(--bg);border-radius:8px;padding:16px;margin-bottom:16px;font-family:'Courier New',monospace;">
+    {% for code in codes %}
+    <div style="padding:4px 0;font-size:14px;letter-spacing:2px;color:var(--text);">{{ code }}</div>
+    {% endfor %}
+  </div>
+  <a href="{{ url_for('settings') }}" class="btn btn-cyan" style="display:block;text-align:center;">Concluído — ir para Configurações</a>
+</div>
+{% endblock %}
