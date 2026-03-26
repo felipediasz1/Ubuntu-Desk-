@@ -130,6 +130,24 @@ _ACTION_CATEGORY = {
     "2fa_disabled":        "security",
 }
 
+# ── Sort allowlist (SQL injection protection) ─────────────────────────────────
+_SORT_ALLOWLIST = {
+    "peers":   {"id": "id", "status": "status", "created_at": "created_at",
+                "hostname": "json_extract(info,'$.hostname')"},
+    "users":   {"username": "username", "role": "role", "created_at": "created_at"},
+    "history": {"started_at": "started_at", "duration_secs": "duration_secs", "peer_from": "peer_from"},
+    "audit":   {"ts": "ts", "category": "category", "action": "action"},
+}
+
+def _safe_sort(table: str, sort_col: str, sort_dir: str):
+    col = _SORT_ALLOWLIST.get(table, {}).get(sort_col)
+    if not col:
+        first_key = list(_SORT_ALLOWLIST.get(table, {"created_at": "created_at"}))[0]
+        return _SORT_ALLOWLIST[table][first_key], "DESC"
+    direction = "ASC" if sort_dir.upper() == "ASC" else "DESC"
+    return col, direction
+
+
 def _categorize(action: str) -> str:
     if action in _ACTION_CATEGORY:
         return _ACTION_CATEGORY[action]
@@ -594,8 +612,11 @@ def logout():
 @app.route("/")
 @login_required
 def index():
+    sort_col = request.args.get("sort", "created_at")
+    sort_dir = request.args.get("dir", "desc")
+    col_expr, direction = _safe_sort("peers", sort_col, sort_dir)
     rows = query(
-        "SELECT id, info, status, created_at, note, blocked FROM peer ORDER BY created_at DESC"
+        f"SELECT id, info, status, created_at, note, blocked FROM peer ORDER BY {col_expr} {direction}"
     )
     peers = []
     for r in rows:
@@ -648,6 +669,8 @@ def index():
         sessions_week=sessions_week,
         daily_labels=daily_labels,
         daily_data=daily_data,
+        sort_col=sort_col,
+        sort_dir=sort_dir,
     )
 
 @app.route("/peer/<peer_id>")
