@@ -598,6 +598,7 @@ def login():
                 session["last_active"] = time.time()
                 session.permanent      = True
                 audit("login_ok")
+                _dispatch_alert("login_ok", {"username": username, "ip": ip})
                 return redirect(_safe_redirect(request.args.get("next", "")))
             else:
                 _record_attempt(ip)
@@ -757,6 +758,7 @@ def peer_block(peer_id):
         db.execute("UPDATE peer SET blocked=1 WHERE id=?", (peer_id,))
         db.commit()
         audit("peer_blocked", f"peer_id={peer_id}")
+        _dispatch_alert("peer_blocked", {"peer_id": peer_id})
         flash("Device marcado como bloqueado (visão admin apenas).", "success")
     return redirect(url_for("peer_detail", peer_id=peer_id))
 
@@ -769,6 +771,7 @@ def peer_unblock(peer_id):
         db.execute("UPDATE peer SET blocked=0 WHERE id=?", (peer_id,))
         db.commit()
         audit("peer_unblocked", f"peer_id={peer_id}")
+        _dispatch_alert("peer_unblocked", {"peer_id": peer_id})
         flash("Bloqueio removido.", "success")
     return redirect(url_for("peer_detail", peer_id=peer_id))
 
@@ -851,6 +854,44 @@ def totp_disable():
     audit("2fa_disabled", f"username={username}")
     flash("2FA desativado.", "success")
     return redirect(url_for("settings"))
+
+
+@app.route("/settings/alerts", methods=["GET", "POST"])
+@login_required
+@admin_required
+def settings_alerts():
+    conn = _get_api_db()
+    if request.method == "POST":
+        import json as _json
+        _known_events = ["login_ok", "login_falha", "peer_blocked", "peer_unblocked", "user_created", "user_deleted"]
+        selected = [e for e in _known_events if request.form.get(f"event_{e}")]
+        data = {
+            "webhook_url":    request.form.get("webhook_url", "").strip(),
+            "webhook_secret": request.form.get("webhook_secret", "").strip(),
+            "smtp_host":      request.form.get("smtp_host", "").strip(),
+            "smtp_port":      int(request.form.get("smtp_port", 587) or 587),
+            "smtp_user":      request.form.get("smtp_user", "").strip(),
+            "smtp_pass":      request.form.get("smtp_pass", "").strip(),
+            "smtp_from":      request.form.get("smtp_from", "").strip(),
+            "smtp_to":        request.form.get("smtp_to", "").strip(),
+            "alert_events":   _json.dumps(selected),
+        }
+        conn.execute("""
+            UPDATE alert_config SET
+                webhook_url=:webhook_url, webhook_secret=:webhook_secret,
+                smtp_host=:smtp_host, smtp_port=:smtp_port,
+                smtp_user=:smtp_user, smtp_pass=:smtp_pass,
+                smtp_from=:smtp_from, smtp_to=:smtp_to,
+                alert_events=:alert_events
+            WHERE id=1
+        """, data)
+        conn.commit()
+        conn.close()
+        flash("Configurações de alertas salvas.", "success")
+        return redirect(url_for("settings_alerts"))
+    cfg = conn.execute("SELECT * FROM alert_config WHERE id=1").fetchone()
+    conn.close()
+    return render_template("settings_alerts.html", cfg=cfg)
 
 
 @app.route("/login/totp", methods=["GET", "POST"])
@@ -1343,6 +1384,22 @@ def _init_api_db(conn):
             used      INTEGER DEFAULT 0
         )
     """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS alert_config (
+            id           INTEGER PRIMARY KEY CHECK (id = 1),
+            webhook_url  TEXT DEFAULT '',
+            webhook_secret TEXT DEFAULT '',
+            smtp_host    TEXT DEFAULT '',
+            smtp_port    INTEGER DEFAULT 587,
+            smtp_user    TEXT DEFAULT '',
+            smtp_pass    TEXT DEFAULT '',
+            smtp_from    TEXT DEFAULT '',
+            smtp_to      TEXT DEFAULT '',
+            alert_events TEXT DEFAULT '[]'
+        )
+    """)
+    conn.execute("INSERT OR IGNORE INTO alert_config (id) VALUES (1)")
 
     conn.commit()
 
@@ -1903,6 +1960,7 @@ def users_create():
     conn.commit()
     conn.close()
     audit("user_created", f"username={username} role={role}")
+    _dispatch_alert("user_created", {"username": username, "role": role})
     flash(f"Usuário '{username}' criado.", "success")
     return redirect(url_for("users_list"))
 
@@ -1979,6 +2037,7 @@ def users_delete(username):
         conn.execute("DELETE FROM users WHERE username=?", (username,))
     conn.close()
     audit("user_deleted", f"username={username}", category="security")
+    _dispatch_alert("user_deleted", {"username": username})
     flash(f"Usuário '{username}' excluído.", "success")
     return redirect(url_for("users_list"))
 
@@ -2053,6 +2112,57 @@ def _backup_loop():
         time.sleep(interval)
         _backup_databases()
         _cleanup_old_backups()
+
+
+def _dispatch_alert(event: str, detail: dict):
+    import threading as _t
+    def _send():
+        try:
+            conn = _get_api_db()
+            cfg = conn.execute("SELECT * FROM alert_config WHERE id=1").fetchone()
+            conn.close()
+            if not cfg:
+                return
+            import json as _j, datetime as _dt
+            events = _j.loads(cfg["alert_events"] or "[]")
+            if events and event not in events:
+                return
+            payload = _j.dumps({
+                "event": event,
+                "ts": _dt.datetime.utcnow().isoformat(),
+                "detail": detail
+            }).encode()
+            if cfg["webhook_url"]:
+                import urllib.request, hmac as _hmac, hashlib as _hashlib
+                sig = "sha256=" + _hmac.new(
+                    (cfg["webhook_secret"] or "").encode(), payload, _hashlib.sha256
+                ).hexdigest()
+                req = urllib.request.Request(
+                    cfg["webhook_url"], data=payload,
+                    headers={"Content-Type": "application/json", "X-Ubuntu-Desk-Signature": sig}
+                )
+                try:
+                    urllib.request.urlopen(req, timeout=5)
+                except Exception:
+                    pass
+            if cfg["smtp_host"] and cfg["smtp_to"]:
+                import smtplib
+                from email.mime.text import MIMEText
+                msg = MIMEText(f"Evento: {event}\n\n{_j.dumps(detail, indent=2)}", "plain")
+                msg["Subject"] = f"[Ubuntu Desk] Alerta: {event}"
+                msg["From"] = cfg["smtp_from"] or cfg["smtp_user"]
+                msg["To"] = cfg["smtp_to"]
+                try:
+                    with smtplib.SMTP(cfg["smtp_host"], cfg["smtp_port"], timeout=5) as s:
+                        if cfg["smtp_user"]:
+                            s.starttls()
+                            s.login(cfg["smtp_user"], cfg["smtp_pass"])
+                        s.send_message(msg)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    _t.Thread(target=_send, daemon=True).start()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Alertas — Ubuntu Desk Admin{% endblock %}
+{% block page_title %}Alertas e Notificações{% endblock %}
+
+{% block content %}
+
+<div style="max-width:640px;">
+
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <!-- Webhook -->
+    <div class="card">
+      <h3 style="margin-bottom:16px;color:var(--cyan);font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Webhook</h3>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label for="webhook_url" style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">URL do Webhook</label>
+          <input id="webhook_url" name="webhook_url" type="url"
+                 value="{{ cfg.webhook_url or '' }}"
+                 placeholder="https://hooks.slack.com/..."
+                 style="width:100%;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;">
+        </div>
+        <div>
+          <label for="webhook_secret" style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Secret (assina o payload via HMAC-SHA256)</label>
+          <input id="webhook_secret" name="webhook_secret" type="password"
+                 value="{{ cfg.webhook_secret or '' }}"
+                 placeholder="Deixe em branco para desabilitar assinatura"
+                 style="width:100%;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;">
+        </div>
+      </div>
+    </div>
+
+    <!-- SMTP -->
+    <div class="card">
+      <h3 style="margin-bottom:16px;color:var(--cyan);font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">E-mail (SMTP)</h3>
+      <div style="display:grid;grid-template-columns:1fr 120px;gap:12px;margin-bottom:12px;">
+        <div>
+          <label for="smtp_host" style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Host SMTP</label>
+          <input id="smtp_host" name="smtp_host" type="text"
+                 value="{{ cfg.smtp_host or '' }}"
+                 placeholder="smtp.gmail.com"
+                 style="width:100%;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;">
+        </div>
+        <div>
+          <label for="smtp_port" style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Porta</label>
+          <input id="smtp_port" name="smtp_port" type="number"
+                 value="{{ cfg.smtp_port or 587 }}"
+                 style="width:100%;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div>
+          <label for="smtp_user" style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Usuário</label>
+          <input id="smtp_user" name="smtp_user" type="text"
+                 value="{{ cfg.smtp_user or '' }}"
+                 placeholder="seu@email.com"
+                 style="width:100%;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;">
+        </div>
+        <div>
+          <label for="smtp_pass" style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Senha</label>
+          <input id="smtp_pass" name="smtp_pass" type="password"
+                 value="{{ cfg.smtp_pass or '' }}"
+                 placeholder="••••••••"
+                 style="width:100%;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label for="smtp_from" style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">De (remetente)</label>
+          <input id="smtp_from" name="smtp_from" type="email"
+                 value="{{ cfg.smtp_from or '' }}"
+                 placeholder="noreply@ubuntudesk.app"
+                 style="width:100%;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;">
+        </div>
+        <div>
+          <label for="smtp_to" style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Para (destinatário)</label>
+          <input id="smtp_to" name="smtp_to" type="email"
+                 value="{{ cfg.smtp_to or '' }}"
+                 placeholder="admin@ubuntudesk.app"
+                 style="width:100%;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;">
+        </div>
+      </div>
+    </div>
+
+    <!-- Eventos -->
+    <div class="card">
+      <h3 style="margin-bottom:4px;color:var(--cyan);font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Eventos</h3>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Deixe todos desmarcados para receber alertas de qualquer evento.</p>
+
+      {% set active_events = (cfg.alert_events or '[]') | tojson | default('[]') %}
+      {% set ev_list = cfg.alert_events | default('[]') %}
+
+      <div style="display:flex;flex-direction:column;gap:10px;" id="events-list">
+        {% set events = [
+          ("login_ok",       "Login bem-sucedido"),
+          ("login_falha",    "Tentativa de login falha"),
+          ("peer_blocked",   "Device bloqueado"),
+          ("peer_unblocked", "Device desbloqueado"),
+          ("user_created",   "Usuário criado"),
+          ("user_deleted",   "Usuário excluído"),
+        ] %}
+        {% for ev_key, ev_label in events %}
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+          <input type="checkbox" name="event_{{ ev_key }}" value="{{ ev_key }}"
+                 {% if ev_key in ev_list %}checked{% endif %}
+                 style="width:16px;height:16px;accent-color:var(--cyan);">
+          <span style="font-size:14px;">{{ ev_label }}</span>
+          <code style="font-size:12px;color:var(--muted);margin-left:auto;">{{ ev_key }}</code>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <button type="submit" class="btn btn-cyan">Salvar configurações</button>
+      <a href="{{ url_for('settings') }}" class="btn btn-ghost">Cancelar</a>
+    </div>
+  </form>
+
+</div>
+
+{% endblock %}
+
+{% block extra_style %}
+<style nonce="{{ csp_nonce }}">
+input[type="url"]:focus,
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus {
+  outline: none;
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 2px rgba(6,182,212,0.15);
+}
+</style>
+{% endblock %}
