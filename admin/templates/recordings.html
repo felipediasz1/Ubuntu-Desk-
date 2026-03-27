@@ -24,8 +24,18 @@
         <option value="outgoing" {% if dir_filter == 'outgoing' %}selected{% endif %}>Enviadas</option>
       </select>
     </div>
+    <div>
+      <label style="display:block; font-size:12px; color:var(--muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">De</label>
+      <input type="date" name="date_from" value="{{ date_from }}"
+             style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;">
+    </div>
+    <div>
+      <label style="display:block; font-size:12px; color:var(--muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">Até</label>
+      <input type="date" name="date_to" value="{{ date_to }}"
+             style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;">
+    </div>
     <button type="submit" class="btn btn-cyan" style="padding: 8px 20px;">Filtrar</button>
-    {% if peer_filter or dir_filter %}
+    {% if peer_filter or dir_filter or date_from or date_to %}
     <a href="{{ url_for('recordings') }}" class="btn btn-ghost" style="padding: 8px 16px;">Limpar</a>
     {% endif %}
   </form>

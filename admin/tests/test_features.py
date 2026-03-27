@@ -141,3 +141,16 @@ def test_active_sessions_page_returns_200(auth_client):
     r = auth_client.get("/sessions/active")
     assert r.status_code == 200
     assert b"Ativas" in r.data or b"ativas" in r.data
+
+
+def test_recordings_date_filter_filters_correctly(auth_client, monkeypatch, tmp_path):
+    rec_dir = tmp_path / "recordings"
+    rec_dir.mkdir()
+    # filenames must match _REC_RE: (incoming|outgoing)_PEER_YYYYMMDDHHMMSS+17digits_(camera|display)N_codec.ext
+    (rec_dir / "incoming_TEST001_20260101120000000_display0_vp9.webm").touch()
+    (rec_dir / "incoming_TEST001_20260315120000000_display0_vp9.webm").touch()
+    monkeypatch.setattr(flask_app, "RECORDING_DIR", str(rec_dir))
+    r = auth_client.get("/recordings?date_from=2026-03-01&date_to=2026-03-31")
+    assert r.status_code == 200
+    assert b"20260315" in r.data
+    assert b"20260101" not in r.data

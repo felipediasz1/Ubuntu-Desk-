@@ -1189,17 +1189,27 @@ def recordings():
     all_recs    = _list_recordings()
     peer_filter = request.args.get("peer", "").strip()
     dir_filter  = request.args.get("direction", "").strip()
+    date_from   = request.args.get("date_from", "").strip()
+    date_to     = request.args.get("date_to", "").strip()
     recs = all_recs
     if peer_filter:
         recs = [r for r in recs if peer_filter.lower() in r["peer_id"].lower()]
     if dir_filter in ("incoming", "outgoing"):
         recs = [r for r in recs if r["direction"] == dir_filter]
+    if date_from:
+        from_key = date_from.replace("-", "")
+        recs = [r for r in recs if r["ts_raw"][:8] >= from_key]
+    if date_to:
+        to_key = date_to.replace("-", "")
+        recs = [r for r in recs if r["ts_raw"][:8] <= to_key]
     peers = sorted({r["peer_id"] for r in all_recs})
     return render_template("recordings.html",
         recordings=recs,
         peers=peers,
         peer_filter=peer_filter,
         dir_filter=dir_filter,
+        date_from=date_from,
+        date_to=date_to,
         recording_dir=RECORDING_DIR,
     )
 
