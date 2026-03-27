@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Sessões Ativas — Ubuntu Desk Admin{% endblock %}
+{% block page_title %}Sessões Ativas{% endblock %}
+
+{% block content %}
+<div class="card" style="padding: 0; overflow: hidden;">
+  {% if sessions %}
+  <table>
+    <thead>
+      <tr>
+        <th>De</th>
+        <th>Para</th>
+        <th>Iniciado em</th>
+        <th>Duração estimada</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in sessions %}
+      <tr>
+        <td>
+          <a href="{{ url_for('peer_detail', peer_id=s.peer_from) }}" class="id-code">{{ s.peer_from }}</a>
+          {% if s.hostname_from %}<span style="color:var(--muted);font-size:12px;margin-left:6px;">{{ s.hostname_from }}</span>{% endif %}
+        </td>
+        <td>
+          <a href="{{ url_for('peer_detail', peer_id=s.peer_to) }}" class="id-code">{{ s.peer_to }}</a>
+          {% if s.hostname_to %}<span style="color:var(--muted);font-size:12px;margin-left:6px;">{{ s.hostname_to }}</span>{% endif %}
+        </td>
+        <td style="color:var(--muted);font-size:13px;">{{ s.started_at }}</td>
+        <td style="color:var(--cyan);font-size:13px;" data-started="{{ s.started_at }}">calculando…</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">
+    <div class="icon">📡</div>
+    <p>Nenhuma sessão ativa no momento.</p>
+    <p style="margin-top:8px;font-size:13px;color:var(--muted);">Sessões aparecem aqui quando um cliente conecta e o servidor reporta a conexão.</p>
+  </div>
+  {% endif %}
+</div>
+
+<script nonce="{{ csp_nonce }}">
+document.querySelectorAll('[data-started]').forEach(function(el) {
+  var started = new Date(el.dataset.started.replace(' ', 'T') + 'Z');
+  function update() {
+    var secs = Math.floor((Date.now() - started) / 1000);
+    if (secs < 60) el.textContent = secs + 's';
+    else if (secs < 3600) el.textContent = Math.floor(secs/60) + 'm ' + (secs%60) + 's';
+    else el.textContent = Math.floor(secs/3600) + 'h ' + Math.floor((secs%3600)/60) + 'm';
+  }
+  update();
+  setInterval(update, 1000);
+});
+</script>
+{% endblock %}

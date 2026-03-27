@@ -135,3 +135,9 @@ def test_bulk_export_returns_csv(auth_client, monkeypatch, tmp_path):
     assert r.status_code == 200
     assert b"P3" in r.data
     assert r.content_type.startswith("text/csv")
+
+
+def test_active_sessions_page_returns_200(auth_client):
+    r = auth_client.get("/sessions/active")
+    assert r.status_code == 200
+    assert b"Ativas" in r.data or b"ativas" in r.data

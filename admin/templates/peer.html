@@ -118,6 +118,53 @@
   </form>
 </div>
 
+<!-- Histórico de Sessões -->
+<div class="card" style="margin-top:16px;">
+  <h3 style="font-size:14px;font-weight:600;color:var(--cyan);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:16px;">Histórico de Sessões</h3>
+  <div class="stat-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px;">
+    <div class="stat-card">
+      <div class="val">{{ sess_stats.total_sessions }}</div>
+      <div class="lbl">Total de sessões</div>
+    </div>
+    <div class="stat-card">
+      <div class="val" style="font-size:22px;">
+        {% set h = (sess_stats.total_secs // 3600)|int %}
+        {% set m = ((sess_stats.total_secs % 3600) // 60)|int %}
+        {{ h }}h {{ m }}m
+      </div>
+      <div class="lbl">Tempo total</div>
+    </div>
+    <div class="stat-card">
+      <div class="val" style="font-size:22px;">
+        {% set am = (sess_stats.avg_secs // 60)|int %}
+        {{ am }}m
+      </div>
+      <div class="lbl">Duração média</div>
+    </div>
+  </div>
+  {% if recent_sessions %}
+  <table>
+    <thead>
+      <tr><th>De → Para</th><th>Início</th><th>Duração</th></tr>
+    </thead>
+    <tbody>
+      {% for s in recent_sessions %}
+      <tr>
+        <td style="font-size:12px;color:var(--muted);">
+          <span class="id-code" style="font-size:12px;">{{ s.peer_from }}</span>
+          → <span class="id-code" style="font-size:12px;">{{ s.peer_to }}</span>
+        </td>
+        <td style="font-size:12px;color:var(--muted);">{{ s.started_at }}</td>
+        <td style="font-size:12px;color:var(--cyan);">
+          {% if s.duration_secs %}{{ (s.duration_secs // 60)|int }}m {{ s.duration_secs % 60 }}s{% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
 <!-- Info bruta -->
 <div class="card">
   <h3 style="margin-bottom: 12px; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Raw Info</h3>

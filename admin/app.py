@@ -809,8 +809,24 @@ def peer_detail(peer_id):
     aconn.close()
     peer["tags"] = [r["tag"] for r in peer_tag_rows]
     all_tags = [r["tag"] for r in all_tags_rows]
+    sconn = _get_sessions_db()
+    sess_stats = sconn.execute("""
+        SELECT
+            COUNT(*)                              AS total_sessions,
+            COALESCE(SUM(duration_secs), 0)       AS total_secs,
+            COALESCE(AVG(duration_secs), 0)       AS avg_secs
+        FROM sessions
+        WHERE peer_from = ? OR peer_to = ?
+    """, (peer_id, peer_id)).fetchone()
+    recent_sessions = sconn.execute("""
+        SELECT * FROM sessions
+        WHERE peer_from = ? OR peer_to = ?
+        ORDER BY started_at DESC LIMIT 10
+    """, (peer_id, peer_id)).fetchall()
+    sconn.close()
     audit("peer_visualizado", f"id={peer_id} hostname={peer['hostname']}")
-    return render_template("peer.html", peer=peer, all_tags=all_tags)
+    return render_template("peer.html", peer=peer, all_tags=all_tags,
+                           sess_stats=sess_stats, recent_sessions=recent_sessions)
 
 @app.route("/peers/<peer_id>/block", methods=["POST"])
 @login_required
@@ -1425,6 +1441,17 @@ def live_stats():
         "sessions_today": sessions_today,
         "new_this_week":  new_this_week,
     })
+
+
+@app.route("/sessions/active")
+@login_required
+def sessions_active():
+    conn = _get_sessions_db()
+    rows = conn.execute(
+        "SELECT * FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 100"
+    ).fetchall()
+    conn.close()
+    return render_template("sessions_active.html", sessions=rows)
 
 
 @app.route("/audit/export.csv")
