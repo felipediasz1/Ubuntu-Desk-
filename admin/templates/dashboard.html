@@ -100,78 +100,100 @@
 </div>
 {% endif %}
 
-<!-- Tabela de dispositivos -->
-<div class="card" style="padding: 0; overflow: hidden;">
-  {% if peers %}
-  <table>
-    <thead>
-      <tr>
-        <th><a href="?sort=id&dir={{ 'asc' if sort_col == 'id' and sort_dir == 'desc' else 'desc' if sort_col == 'id' and sort_dir == 'asc' else 'asc' }}" style="color:inherit;text-decoration:none;">ID {% if sort_col == 'id' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}</a></th>
-        <th><a href="?sort=hostname&dir={{ 'asc' if sort_col == 'hostname' and sort_dir == 'desc' else 'desc' if sort_col == 'hostname' and sort_dir == 'asc' else 'asc' }}" style="color:inherit;text-decoration:none;">Hostname {% if sort_col == 'hostname' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}</a></th>
-        <th>Sistema</th>
-        <th>Usuário</th>
-        <th><a href="?sort=status&dir={{ 'asc' if sort_col == 'status' and sort_dir == 'desc' else 'desc' if sort_col == 'status' and sort_dir == 'asc' else 'asc' }}" style="color:inherit;text-decoration:none;">Status {% if sort_col == 'status' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}</a></th>
-        <th><a href="?sort=created_at&dir={{ 'asc' if sort_col == 'created_at' and sort_dir == 'desc' else 'desc' if sort_col == 'created_at' and sort_dir == 'asc' else 'desc' }}" style="color:inherit;text-decoration:none;">Registrado em {% if sort_col == 'created_at' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}</a></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for p in peers %}
-      <tr>
-        <td>
-          <form method="post" action="{{ url_for('peer_star' if not p.starred else 'peer_unstar', peer_id=p.id) }}" style="display:inline;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" class="btn-icon" title="{{ 'Remover favorito' if p.starred else 'Favoritar' }}" style="background:none;border:none;cursor:pointer;color:{{ '#FCD34D' if p.starred else 'var(--text-muted)' }};font-size:1.1em;padding:0 4px 0 0;vertical-align:middle;">{{ '★' if p.starred else '☆' }}</button>
-          </form>
-          <a href="{{ url_for('peer_detail', peer_id=p.id) }}" class="id-code">{{ p.id }}</a>
-        </td>
-        <td>
-          {{ p.hostname }}
-          {% for tag in p.get('tags', []) %}
-          <span style="display:inline-block;margin-left:4px;padding:1px 7px;border-radius:99px;font-size:11px;background:rgba(6,182,212,0.12);color:var(--cyan);border:1px solid rgba(6,182,212,0.25);">{{ tag }}</span>
-          {% endfor %}
-        </td>
-        <td style="color: var(--muted); font-size: 13px;">{{ p.os }}</td>
-        <td style="color: var(--muted);">{{ p.username }}</td>
-        <td>
-          {% if p.status == 1 %}
-            <span class="badge badge-online">● Online</span>
-          {% else %}
-            <span class="badge badge-offline">Offline</span>
-          {% endif %}
-          {% if p.blocked %}
-            <span class="badge" style="background:rgba(248,113,113,0.15);color:var(--red);margin-left:6px;">Bloqueado</span>
-          {% endif %}
-        </td>
-        <td style="color: var(--muted); font-size: 13px;">{{ p.created_at }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <div class="empty">
-    <div class="icon">🖥</div>
-    <p>Nenhum dispositivo registrado ainda.</p>
-    <p style="margin-top: 8px; font-size: 13px;">Instale o cliente Ubuntu Desk e conecte-se ao servidor.</p>
-  </div>
-  {% endif %}
-</div>
+<!-- Bulk actions form wraps toolbar + table + pagination -->
+<form id="bulk-form" method="post" action="{{ url_for('peers_bulk') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="action" id="bulk-action" value="">
 
-{% if pages > 1 %}
-{% set base_url = "?sort=" ~ sort_col ~ "&dir=" ~ sort_dir %}
-<nav class="pagination" aria-label="Paginação" style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:16px;">
-  {% if page > 1 %}
-  <a href="{{ base_url }}&page={{ page - 1 }}" class="btn btn-ghost" style="padding:6px 14px;font-size:13px;">&#8592; Anterior</a>
-  {% else %}
-  <span class="btn btn-ghost" style="padding:6px 14px;font-size:13px;opacity:0.35;cursor:default;">&#8592; Anterior</span>
+  <!-- Floating bulk toolbar (hidden until checkboxes selected) -->
+  <div id="bulk-toolbar" style="display:none;position:sticky;top:16px;z-index:100;background:var(--bg2);border:1px solid var(--cyan);border-radius:10px;padding:10px 16px;margin-bottom:16px;align-items:center;gap:12px;flex-wrap:wrap;">
+    <span id="bulk-count" style="color:var(--cyan);font-weight:600;font-size:13px;"></span>
+    <button type="button" onclick="bulkAction('block')" class="btn btn-ghost" style="padding:6px 14px;font-size:13px;">Bloquear</button>
+    <button type="button" onclick="bulkAction('unblock')" class="btn btn-ghost" style="padding:6px 14px;font-size:13px;">Desbloquear</button>
+    <button type="button" onclick="bulkAction('export')" class="btn btn-cyan" style="padding:6px 14px;font-size:13px;">&#11015; Exportar CSV</button>
+  </div>
+
+  <!-- Tabela de dispositivos -->
+  <div class="card" style="padding: 0; overflow: hidden;">
+    {% if peers %}
+    <table>
+      <thead>
+        <tr>
+          <th style="width:32px;">
+            <input type="checkbox" id="select-all" style="cursor:pointer;" aria-label="Selecionar todos">
+          </th>
+          <th><a href="?sort=id&dir={{ 'asc' if sort_col == 'id' and sort_dir == 'desc' else 'desc' if sort_col == 'id' and sort_dir == 'asc' else 'asc' }}" style="color:inherit;text-decoration:none;">ID {% if sort_col == 'id' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}</a></th>
+          <th><a href="?sort=hostname&dir={{ 'asc' if sort_col == 'hostname' and sort_dir == 'desc' else 'desc' if sort_col == 'hostname' and sort_dir == 'asc' else 'asc' }}" style="color:inherit;text-decoration:none;">Hostname {% if sort_col == 'hostname' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}</a></th>
+          <th>Sistema</th>
+          <th>Usuário</th>
+          <th><a href="?sort=status&dir={{ 'asc' if sort_col == 'status' and sort_dir == 'desc' else 'desc' if sort_col == 'status' and sort_dir == 'asc' else 'asc' }}" style="color:inherit;text-decoration:none;">Status {% if sort_col == 'status' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}</a></th>
+          <th><a href="?sort=created_at&dir={{ 'asc' if sort_col == 'created_at' and sort_dir == 'desc' else 'desc' if sort_col == 'created_at' and sort_dir == 'asc' else 'desc' }}" style="color:inherit;text-decoration:none;">Registrado em {% if sort_col == 'created_at' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}</a></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in peers %}
+        <tr>
+          <td>
+            <input type="checkbox" class="peer-checkbox" name="peer_ids" value="{{ p.id }}"
+                   style="cursor:pointer;" aria-label="Selecionar {{ p.hostname }}">
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('peer_star' if not p.starred else 'peer_unstar', peer_id=p.id) }}" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn-icon" title="{{ 'Remover favorito' if p.starred else 'Favoritar' }}" style="background:none;border:none;cursor:pointer;color:{{ '#FCD34D' if p.starred else 'var(--text-muted)' }};font-size:1.1em;padding:0 4px 0 0;vertical-align:middle;">{{ '★' if p.starred else '☆' }}</button>
+            </form>
+            <a href="{{ url_for('peer_detail', peer_id=p.id) }}" class="id-code">{{ p.id }}</a>
+          </td>
+          <td>
+            {{ p.hostname }}
+            {% for tag in p.get('tags', []) %}
+            <span style="display:inline-block;margin-left:4px;padding:1px 7px;border-radius:99px;font-size:11px;background:rgba(6,182,212,0.12);color:var(--cyan);border:1px solid rgba(6,182,212,0.25);">{{ tag }}</span>
+            {% endfor %}
+          </td>
+          <td style="color: var(--muted); font-size: 13px;">{{ p.os }}</td>
+          <td style="color: var(--muted);">{{ p.username }}</td>
+          <td>
+            {% if p.status == 1 %}
+              <span class="badge badge-online">● Online</span>
+            {% else %}
+              <span class="badge badge-offline">Offline</span>
+            {% endif %}
+            {% if p.blocked %}
+              <span class="badge" style="background:rgba(248,113,113,0.15);color:var(--red);margin-left:6px;">Bloqueado</span>
+            {% endif %}
+          </td>
+          <td style="color: var(--muted); font-size: 13px;">{{ p.created_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">
+      <div class="icon">&#128421;</div>
+      <p>Nenhum dispositivo registrado ainda.</p>
+      <p style="margin-top: 8px; font-size: 13px;">Instale o cliente Ubuntu Desk e conecte-se ao servidor.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if pages > 1 %}
+  {% set base_url = "?sort=" ~ sort_col ~ "&dir=" ~ sort_dir %}
+  <nav class="pagination" aria-label="Paginação" style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:16px;">
+    {% if page > 1 %}
+    <a href="{{ base_url }}&page={{ page - 1 }}" class="btn btn-ghost" style="padding:6px 14px;font-size:13px;">&#8592; Anterior</a>
+    {% else %}
+    <span class="btn btn-ghost" style="padding:6px 14px;font-size:13px;opacity:0.35;cursor:default;">&#8592; Anterior</span>
+    {% endif %}
+    <span style="color:var(--muted);font-size:13px;">Página {{ page }} de {{ pages }}</span>
+    {% if page < pages %}
+    <a href="{{ base_url }}&page={{ page + 1 }}" class="btn btn-ghost" style="padding:6px 14px;font-size:13px;">Próxima &#8594;</a>
+    {% else %}
+    <span class="btn btn-ghost" style="padding:6px 14px;font-size:13px;opacity:0.35;cursor:default;">Próxima &#8594;</span>
+    {% endif %}
+  </nav>
   {% endif %}
-  <span style="color:var(--muted);font-size:13px;">Página {{ page }} de {{ pages }}</span>
-  {% if page < pages %}
-  <a href="{{ base_url }}&page={{ page + 1 }}" class="btn btn-ghost" style="padding:6px 14px;font-size:13px;">Próxima &#8594;</a>
-  {% else %}
-  <span class="btn btn-ghost" style="padding:6px 14px;font-size:13px;opacity:0.35;cursor:default;">Próxima &#8594;</span>
-  {% endif %}
-</nav>
-{% endif %}
+
+</form>
 
 {% if peers %}
 <script nonce="{{ csp_nonce }}">
@@ -204,6 +226,38 @@
       .catch(function() {});
   }
   setInterval(refreshStats, 30000);
+})();
+</script>
+
+<script nonce="{{ csp_nonce }}">
+(function() {
+  var selectAll = document.getElementById('select-all');
+  var toolbar   = document.getElementById('bulk-toolbar');
+  var countEl   = document.getElementById('bulk-count');
+
+  function updateToolbar() {
+    var checked = document.querySelectorAll('.peer-checkbox:checked');
+    if (toolbar) toolbar.style.display = checked.length > 0 ? 'flex' : 'none';
+    if (countEl) countEl.textContent = checked.length + ' selecionado(s)';
+  }
+
+  if (selectAll) {
+    selectAll.addEventListener('change', function() {
+      document.querySelectorAll('.peer-checkbox').forEach(function(cb) {
+        cb.checked = selectAll.checked;
+      });
+      updateToolbar();
+    });
+  }
+
+  document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('peer-checkbox')) updateToolbar();
+  });
+
+  window.bulkAction = function(action) {
+    document.getElementById('bulk-action').value = action;
+    document.getElementById('bulk-form').submit();
+  };
 })();
 </script>
 

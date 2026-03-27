@@ -883,6 +883,63 @@ def peer_tags_update(peer_id):
     return redirect(url_for("peer_detail", peer_id=peer_id))
 
 
+@app.route("/peers/bulk", methods=["POST"])
+@login_required
+def peers_bulk():
+    action   = request.form.get("action", "")
+    peer_ids = [p.strip() for p in request.form.getlist("peer_ids") if p.strip()]
+
+    if not peer_ids or action not in ("block", "unblock", "export"):
+        flash("Selecione ao menos um dispositivo e uma ação válida.", "error")
+        return redirect(url_for("index"))
+
+    if action == "export":
+        placeholders = ",".join("?" * len(peer_ids))
+        rows = query(
+            f"SELECT id, info, status, created_at FROM peer WHERE id IN ({placeholders})",
+            peer_ids,
+        )
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["ID", "Hostname", "Sistema", "Usuário", "Status", "Registrado em"])
+        for r in rows:
+            info = parse_info(r["info"])
+            writer.writerow([
+                r["id"],
+                info.get("hostname", ""),
+                info.get("os", ""),
+                info.get("username", ""),
+                "Online" if r["status"] == 1 else "Offline",
+                r["created_at"],
+            ])
+        output = buf.getvalue()
+        fname  = f"devices_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+        return Response(
+            output, mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={fname}"},
+        )
+
+    db = get_db()
+    if db is None:
+        flash("Banco de dados não disponível.", "error")
+        return redirect(url_for("index"))
+
+    val          = 1 if action == "block" else 0
+    placeholders = ",".join("?" * len(peer_ids))
+    db.execute(
+        f"UPDATE peer SET blocked=? WHERE id IN ({placeholders})",
+        [val] + peer_ids,
+    )
+    db.commit()
+    audit(
+        f"peer_bulk_{action}",
+        f"count={len(peer_ids)} ids={','.join(peer_ids[:10])}",
+    )
+    label = "bloqueados" if action == "block" else "desbloqueados"
+    flash(f"{len(peer_ids)} dispositivo(s) {label}.", "success")
+    return redirect(url_for("index"))
+
+
 # ── Configurações / 2FA ───────────────────────────────────────────────────────
 
 @app.route("/settings")

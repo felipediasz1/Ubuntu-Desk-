@@ -90,3 +90,48 @@ def test_invalid_tag_rejected(auth_client, monkeypatch):
         data={"action": "add", "tag": "<script>", "csrf_token": token})
     # Should redirect back (not 500) — invalid tag rejected with flash
     assert r.status_code in (200, 302)
+
+def test_bulk_block_redirects(auth_client, monkeypatch, tmp_path):
+    import sqlite3
+    db_file = tmp_path / "peer.db"
+    conn = sqlite3.connect(str(db_file))
+    conn.execute("""CREATE TABLE peer (
+        id TEXT PRIMARY KEY, info TEXT DEFAULT '{}',
+        status INTEGER DEFAULT 0, created_at TEXT DEFAULT '',
+        note TEXT DEFAULT '', blocked INTEGER DEFAULT 0,
+        starred INTEGER DEFAULT 0)""")
+    conn.execute("INSERT INTO peer VALUES ('P1','{}',0,'2026-01-01','',0,0)")
+    conn.execute("INSERT INTO peer VALUES ('P2','{}',0,'2026-01-01','',0,0)")
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(flask_app, "DB_PATH", str(db_file))
+    flask_app._db_initialized = False  # reset if needed
+    auth_client.get("/")  # populate _csrf in session
+    with auth_client.session_transaction() as s:
+        token = s.get("_csrf", "")
+    r = auth_client.post("/peers/bulk",
+        data={"action": "block", "peer_ids": ["P1", "P2"], "csrf_token": token},
+        follow_redirects=False)
+    assert r.status_code == 302
+
+def test_bulk_export_returns_csv(auth_client, monkeypatch, tmp_path):
+    import sqlite3
+    db_file = tmp_path / "peer2.db"
+    conn = sqlite3.connect(str(db_file))
+    conn.execute("""CREATE TABLE peer (
+        id TEXT PRIMARY KEY, info TEXT DEFAULT '{}',
+        status INTEGER DEFAULT 0, created_at TEXT DEFAULT '',
+        note TEXT DEFAULT '', blocked INTEGER DEFAULT 0,
+        starred INTEGER DEFAULT 0)""")
+    conn.execute("INSERT INTO peer VALUES ('P3','{}',1,'2026-01-01','',0,0)")
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(flask_app, "DB_PATH", str(db_file))
+    auth_client.get("/")  # populate _csrf in session
+    with auth_client.session_transaction() as s:
+        token = s.get("_csrf", "")
+    r = auth_client.post("/peers/bulk",
+        data={"action": "export", "peer_ids": ["P3"], "csrf_token": token})
+    assert r.status_code == 200
+    assert b"P3" in r.data
+    assert r.content_type.startswith("text/csv")
