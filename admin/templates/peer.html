@@ -16,6 +16,9 @@
 {% endblock %}
 
 <a href="{{ url_for('index') }}" class="btn btn-ghost" style="margin-bottom: 20px; display: inline-block;">← Voltar</a>
+<a href="ubuntu-desk://{{ peer.id }}" class="btn btn-cyan"
+   title="Abre o Ubuntu Desk e conecta a este dispositivo"
+   style="margin-bottom: 20px; margin-left: 8px; display: inline-block; padding:8px 18px; font-size:14px;">↗ Conectar agora</a>
 
 <div class="peer-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
 
