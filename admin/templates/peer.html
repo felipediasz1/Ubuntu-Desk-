@@ -86,6 +86,35 @@
   </div>
 </div>
 
+<!-- Tags -->
+<div class="card" style="margin-top:16px;">
+  <h3 style="font-size:14px;font-weight:600;color:var(--cyan);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">Tags</h3>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+    {% for tag in peer.tags %}
+    <form method="post" action="{{ url_for('peer_tags_update', peer_id=peer.id) }}" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="remove">
+      <input type="hidden" name="tag" value="{{ tag }}">
+      <button type="submit" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:99px;background:rgba(6,182,212,0.12);color:var(--cyan);border:1px solid rgba(6,182,212,0.3);font-size:12px;cursor:pointer;">
+        {{ tag }} <span style="opacity:0.6;">✕</span>
+      </button>
+    </form>
+    {% else %}
+    <span style="color:var(--muted);font-size:13px;">Sem tags.</span>
+    {% endfor %}
+  </div>
+  <form method="post" action="{{ url_for('peer_tags_update', peer_id=peer.id) }}" style="display:flex;gap:8px;align-items:center;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="add">
+    <input type="text" name="tag" placeholder="Nova tag…" list="tag-suggestions"
+           style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px;width:180px;">
+    <datalist id="tag-suggestions">
+      {% for t in all_tags %}<option value="{{ t }}">{% endfor %}
+    </datalist>
+    <button type="submit" class="btn btn-cyan" style="padding:6px 14px;font-size:13px;">Adicionar</button>
+  </form>
+</div>
+
 <!-- Info bruta -->
 <div class="card">
   <h3 style="margin-bottom: 12px; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Raw Info</h3>

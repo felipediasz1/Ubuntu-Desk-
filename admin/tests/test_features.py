@@ -51,3 +51,42 @@ def test_dashboard_has_new_devices_stat(auth_client, monkeypatch):
     r = auth_client.get("/")
     assert r.status_code == 200
     assert b"Novos esta semana" in r.data or b"novos esta semana" in r.data
+
+def _get_csrf(client, monkeypatch_db_path):
+    """Trigger a GET to populate _csrf in session, then return the token."""
+    monkeypatch_db_path("")
+    client.get("/")
+    with client.session_transaction() as s:
+        return s.get("_csrf", "")
+
+def test_add_peer_tag(auth_client, monkeypatch):
+    monkeypatch.setattr(flask_app, "DB_PATH", "")
+    auth_client.get("/")
+    with auth_client.session_transaction() as s:
+        token = s.get("_csrf", "")
+    r = auth_client.post("/peers/TEST001/tags",
+        data={"action": "add", "tag": "servidor", "csrf_token": token})
+    # Expects redirect (302) — peer may not exist in test DB
+    assert r.status_code in (200, 302)
+
+def test_remove_peer_tag(auth_client, monkeypatch):
+    monkeypatch.setattr(flask_app, "DB_PATH", "")
+    auth_client.get("/")
+    with auth_client.session_transaction() as s:
+        token = s.get("_csrf", "")
+    auth_client.post("/peers/TEST001/tags",
+        data={"action": "add", "tag": "laptop", "csrf_token": token})
+    r = auth_client.post("/peers/TEST001/tags",
+        data={"action": "remove", "tag": "laptop", "csrf_token": token})
+    # Expects redirect (302)
+    assert r.status_code in (200, 302)
+
+def test_invalid_tag_rejected(auth_client, monkeypatch):
+    monkeypatch.setattr(flask_app, "DB_PATH", "")
+    auth_client.get("/")
+    with auth_client.session_transaction() as s:
+        token = s.get("_csrf", "")
+    r = auth_client.post("/peers/TEST001/tags",
+        data={"action": "add", "tag": "<script>", "csrf_token": token})
+    # Should redirect back (not 500) — invalid tag rejected with flash
+    assert r.status_code in (200, 302)

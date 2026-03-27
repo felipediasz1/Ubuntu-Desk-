@@ -90,6 +90,16 @@
 </div>
 {% endif %}
 
+{% if all_tags %}
+<div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+  <span style="color:var(--muted);font-size:13px;">Tag:</span>
+  <a href="?" class="btn btn-ghost" style="padding:3px 10px;font-size:12px;{% if not tag_filter %}border:1px solid var(--cyan);color:var(--cyan);{% endif %}">Todas</a>
+  {% for t in all_tags %}
+  <a href="?tag={{ t }}" class="btn btn-ghost" style="padding:3px 10px;font-size:12px;{% if tag_filter == t %}border:1px solid var(--cyan);color:var(--cyan);{% endif %}">{{ t }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
 <!-- Tabela de dispositivos -->
 <div class="card" style="padding: 0; overflow: hidden;">
   {% if peers %}
@@ -114,7 +124,12 @@
           </form>
           <a href="{{ url_for('peer_detail', peer_id=p.id) }}" class="id-code">{{ p.id }}</a>
         </td>
-        <td>{{ p.hostname }}</td>
+        <td>
+          {{ p.hostname }}
+          {% for tag in p.get('tags', []) %}
+          <span style="display:inline-block;margin-left:4px;padding:1px 7px;border-radius:99px;font-size:11px;background:rgba(6,182,212,0.12);color:var(--cyan);border:1px solid rgba(6,182,212,0.25);">{{ tag }}</span>
+          {% endfor %}
+        </td>
         <td style="color: var(--muted); font-size: 13px;">{{ p.os }}</td>
         <td style="color: var(--muted);">{{ p.username }}</td>
         <td>

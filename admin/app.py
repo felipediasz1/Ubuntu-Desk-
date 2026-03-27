@@ -126,6 +126,8 @@ _ACTION_CATEGORY = {
     "ab_viewed":           "access",
     "peer_blocked":        "security",
     "peer_unblocked":      "admin",
+    "peer_tag_add":        "admin",
+    "peer_tag_remove":     "admin",
     "history_viewed":      "access",
     "2fa_enabled":         "security",
     "2fa_disabled":        "security",
@@ -630,6 +632,18 @@ def index():
     sort_dir = request.args.get("dir", "desc")
     col_expr, direction = _safe_sort("peers", sort_col, sort_dir)
     page        = max(1, request.args.get("page", 1, type=int))
+    tag_filter  = request.args.get("tag", "").strip()
+
+    # If tag filter active, get matching peer_ids from api DB first
+    tagged_ids = None
+    if tag_filter:
+        aconn = _get_api_db()
+        tagged_rows = aconn.execute(
+            "SELECT DISTINCT peer_id FROM peer_tags WHERE tag=?", (tag_filter,)
+        ).fetchall()
+        aconn.close()
+        tagged_ids = [r["peer_id"] for r in tagged_rows]
+
     peer_count  = query("SELECT COUNT(*) AS cnt FROM peer")
     total_peers = peer_count[0]["cnt"] if peer_count else 0
     pages       = max(1, (total_peers + PEERS_PAGE_SIZE - 1) // PEERS_PAGE_SIZE)
@@ -655,6 +669,30 @@ def index():
             "blocked":    r["blocked"] or 0,
             "starred":    r["starred"] or 0,
         })
+
+    # Apply tag filter in Python
+    if tagged_ids is not None:
+        if not tagged_ids:
+            peers = []
+        else:
+            peers = [p for p in peers if p["id"] in set(tagged_ids)]
+
+    # Load tags for peers on current page
+    aconn = _get_api_db()
+    if peers:
+        ids_on_page = [p["id"] for p in peers]
+        ph = ",".join("?" * len(ids_on_page))
+        tag_rows = aconn.execute(
+            f"SELECT peer_id, tag FROM peer_tags WHERE peer_id IN ({ph})", ids_on_page
+        ).fetchall()
+        tags_by_peer = {}
+        for tr in tag_rows:
+            tags_by_peer.setdefault(tr["peer_id"], []).append(tr["tag"])
+        for p in peers:
+            p["tags"] = tags_by_peer.get(p["id"], [])
+    all_tags_rows = aconn.execute("SELECT DISTINCT tag FROM peer_tags ORDER BY tag").fetchall()
+    aconn.close()
+    all_tags = [r["tag"] for r in all_tags_rows]
 
     db_exists = os.path.exists(DB_PATH)
     total     = total_peers
@@ -700,6 +738,8 @@ def index():
         sort_dir=sort_dir,
         page=page,
         pages=pages,
+        tag_filter=tag_filter,
+        all_tags=all_tags,
     )
 
 @app.route("/search")
@@ -761,8 +801,16 @@ def peer_detail(peer_id):
         "blocked":    r["blocked"] or 0,
         "info_raw":   json.dumps(info, indent=2, ensure_ascii=False),
     }
+    aconn = _get_api_db()
+    peer_tag_rows = aconn.execute(
+        "SELECT tag FROM peer_tags WHERE peer_id=? ORDER BY tag", (peer_id,)
+    ).fetchall()
+    all_tags_rows = aconn.execute("SELECT DISTINCT tag FROM peer_tags ORDER BY tag").fetchall()
+    aconn.close()
+    peer["tags"] = [r["tag"] for r in peer_tag_rows]
+    all_tags = [r["tag"] for r in all_tags_rows]
     audit("peer_visualizado", f"id={peer_id} hostname={peer['hostname']}")
-    return render_template("peer.html", peer=peer)
+    return render_template("peer.html", peer=peer, all_tags=all_tags)
 
 @app.route("/peers/<peer_id>/block", methods=["POST"])
 @login_required
@@ -808,6 +856,31 @@ def peer_unstar(peer_id):
         db.execute("UPDATE peer SET starred=0 WHERE id=?", (peer_id,))
         db.commit()
     return redirect(request.referrer or url_for("index"))
+
+
+_TAG_RE = re.compile(r'^[\w\s\-\.]+$')
+
+@app.route("/peers/<peer_id>/tags", methods=["POST"])
+@login_required
+def peer_tags_update(peer_id):
+    action = request.form.get("action", "")
+    tag    = request.form.get("tag", "").strip()[:50]
+    if action not in ("add", "remove") or not tag or not _TAG_RE.match(tag):
+        flash("Tag inválida.", "error")
+        return redirect(url_for("peer_detail", peer_id=peer_id))
+    conn = _get_api_db()
+    if action == "add":
+        conn.execute(
+            "INSERT OR IGNORE INTO peer_tags (peer_id, tag) VALUES (?,?)", (peer_id, tag)
+        )
+    else:
+        conn.execute(
+            "DELETE FROM peer_tags WHERE peer_id=? AND tag=?", (peer_id, tag)
+        )
+    conn.commit()
+    conn.close()
+    audit(f"peer_tag_{action}", f"peer={peer_id} tag={tag}")
+    return redirect(url_for("peer_detail", peer_id=peer_id))
 
 
 # ── Configurações / 2FA ───────────────────────────────────────────────────────
@@ -1484,6 +1557,14 @@ def _init_api_db(conn):
             success INTEGER NOT NULL DEFAULT 0,
             error   TEXT    DEFAULT '',
             detail  TEXT    DEFAULT ''
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS peer_tags (
+            peer_id TEXT NOT NULL,
+            tag     TEXT NOT NULL,
+            PRIMARY KEY (peer_id, tag)
         )
     """)
 
