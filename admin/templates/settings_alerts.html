@@ -109,6 +109,20 @@
       </div>
     </div>
 
+    <div class="card" style="margin-bottom:20px;">
+      <h3 style="font-size:14px;font-weight:600;color:var(--cyan);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:16px;">Alerta de Dispositivo Offline</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px;">
+        Envia alerta quando um dispositivo ficar offline por mais do que o tempo configurado. Defina 0 para desativar.
+      </p>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <label style="font-size:13px;color:var(--text);">Threshold (horas):</label>
+        <input type="number" name="offline_threshold_hours" min="0" max="168" step="1"
+               value="{{ cfg.offline_threshold_hours if cfg else 0 }}"
+               style="width:80px;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px;">
+        <span style="color:var(--muted);font-size:12px;">0 = desativado &nbsp;·&nbsp; ex: 2 = alerta após 2h offline</span>
+      </div>
+    </div>
+
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
       <button type="submit" class="btn btn-cyan">Salvar configurações</button>
       <a href="{{ url_for('settings') }}" class="btn btn-ghost">Cancelar</a>

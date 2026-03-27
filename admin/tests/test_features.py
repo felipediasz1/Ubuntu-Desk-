@@ -154,3 +154,11 @@ def test_recordings_date_filter_filters_correctly(auth_client, monkeypatch, tmp_
     assert r.status_code == 200
     assert b"20260315" in r.data
     assert b"20260101" not in r.data
+
+
+def test_offline_alert_check_no_crash(auth_client, monkeypatch):
+    monkeypatch.setattr(flask_app, "DB_PATH", "")  # no peer DB
+    try:
+        flask_app._check_offline_devices()
+    except Exception as e:
+        pytest.fail(f"_check_offline_devices raised: {e}")

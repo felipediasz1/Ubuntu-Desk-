@@ -125,6 +125,7 @@ _ACTION_CATEGORY = {
     "ab_shared_written":   "admin",
     "ab_viewed":           "access",
     "peer_blocked":        "security",
+    "peer_offline":        "security",
     "peer_unblocked":      "admin",
     "peer_tag_add":        "admin",
     "peer_tag_remove":     "admin",
@@ -1023,7 +1024,7 @@ def settings_alerts():
     conn = _get_api_db()
     if request.method == "POST":
         import json as _json
-        _known_events = ["login_ok", "login_falha", "login_bloqueado", "peer_blocked", "peer_unblocked", "user_created", "user_deleted"]
+        _known_events = ["login_ok", "login_falha", "login_bloqueado", "peer_blocked", "peer_unblocked", "user_created", "user_deleted", "peer_offline"]
         selected = [e for e in _known_events if request.form.get(f"event_{e}")]
         data = {
             "webhook_url":    request.form.get("webhook_url", "").strip(),
@@ -1033,8 +1034,9 @@ def settings_alerts():
             "smtp_user":      request.form.get("smtp_user", "").strip(),
             "smtp_pass":      request.form.get("smtp_pass", "").strip(),
             "smtp_from":      request.form.get("smtp_from", "").strip(),
-            "smtp_to":        request.form.get("smtp_to", "").strip(),
-            "alert_events":   _json.dumps(selected),
+            "smtp_to":                 request.form.get("smtp_to", "").strip(),
+            "alert_events":            _json.dumps(selected),
+            "offline_threshold_hours": int(request.form.get("offline_threshold_hours", 0) or 0),
         }
         conn.execute("""
             UPDATE alert_config SET
@@ -1042,7 +1044,8 @@ def settings_alerts():
                 smtp_host=:smtp_host, smtp_port=:smtp_port,
                 smtp_user=:smtp_user, smtp_pass=:smtp_pass,
                 smtp_from=:smtp_from, smtp_to=:smtp_to,
-                alert_events=:alert_events
+                alert_events=:alert_events,
+                offline_threshold_hours=:offline_threshold_hours
             WHERE id=1
         """, data)
         conn.commit()
@@ -1661,6 +1664,19 @@ def _init_api_db(conn):
             PRIMARY KEY (peer_id, tag)
         )
     """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS peer_status_track (
+            peer_id       TEXT PRIMARY KEY,
+            last_online   REAL,
+            offline_since REAL,
+            alerted_at    REAL
+        )
+    """)
+
+    ac_cols = [r[1] for r in conn.execute("PRAGMA table_info(alert_config)").fetchall()]
+    if "offline_threshold_hours" not in ac_cols:
+        conn.execute("ALTER TABLE alert_config ADD COLUMN offline_threshold_hours INTEGER DEFAULT 0")
 
     conn.commit()
 
@@ -2375,6 +2391,89 @@ def _backup_loop():
         _cleanup_old_backups()
 
 
+_OFFLINE_CHECK_INTERVAL = 300  # 5 minutes
+
+
+def _check_offline_devices():
+    """Check for peers offline longer than threshold; fire alerts."""
+    try:
+        conn  = _get_api_db()
+        cfg   = conn.execute("SELECT * FROM alert_config WHERE id=1").fetchone()
+        conn.close()
+        if not cfg:
+            return
+        threshold_h = cfg["offline_threshold_hours"] or 0
+        if threshold_h <= 0:
+            return
+        import json as _j
+        active_events = _j.loads(cfg["alert_events"] or "[]")
+        if active_events and "peer_offline" not in active_events:
+            return
+    except Exception:
+        return
+
+    threshold_secs = threshold_h * 3600
+    now = time.time()
+    peers = query("SELECT id, status FROM peer")
+    if not peers:
+        return
+
+    conn = _get_api_db()
+    for peer in peers:
+        pid    = peer["id"]
+        status = peer["status"]
+        row    = conn.execute(
+            "SELECT last_online, offline_since, alerted_at FROM peer_status_track WHERE peer_id=?",
+            (pid,)
+        ).fetchone()
+
+        if status == 1:
+            conn.execute("""
+                INSERT INTO peer_status_track (peer_id, last_online, offline_since, alerted_at)
+                VALUES (?, ?, NULL, NULL)
+                ON CONFLICT(peer_id) DO UPDATE SET last_online=excluded.last_online, offline_since=NULL
+            """, (pid, now))
+        else:
+            if row is None:
+                conn.execute("""
+                    INSERT OR IGNORE INTO peer_status_track (peer_id, last_online, offline_since, alerted_at)
+                    VALUES (?, NULL, ?, NULL)
+                """, (pid, now))
+            else:
+                offline_since = row["offline_since"] or now
+                if row["offline_since"] is None:
+                    conn.execute(
+                        "UPDATE peer_status_track SET offline_since=? WHERE peer_id=?",
+                        (now, pid)
+                    )
+                    offline_since = now
+
+                offline_secs = now - offline_since
+                last_alerted = row["alerted_at"] or 0
+
+                if offline_secs >= threshold_secs and (now - last_alerted) >= threshold_secs:
+                    _dispatch_alert("peer_offline", {
+                        "peer_id":       pid,
+                        "offline_hours": round(offline_secs / 3600, 1),
+                        "threshold_h":   threshold_h,
+                    })
+                    conn.execute(
+                        "UPDATE peer_status_track SET alerted_at=? WHERE peer_id=?",
+                        (now, pid)
+                    )
+    conn.commit()
+    conn.close()
+
+
+def _offline_alert_loop():
+    while True:
+        time.sleep(_OFFLINE_CHECK_INTERVAL)
+        try:
+            _check_offline_devices()
+        except Exception:
+            pass
+
+
 def _send_alert_sync(event: str, detail: dict, bypass_filter: bool = False) -> list:
     """Envia alerta de forma síncrona. Retorna lista de (channel, success, error_msg)."""
     import json as _j, datetime as _dt
@@ -2459,6 +2558,6 @@ def _dispatch_alert(event: str, detail: dict):
 if __name__ == "__main__":
     _startup_security_check()
     import threading as _threading
-    _t = _threading.Thread(target=_backup_loop, daemon=True)
-    _t.start()
+    _threading.Thread(target=_backup_loop, daemon=True).start()
+    _threading.Thread(target=_offline_alert_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=PORT, debug=False)
