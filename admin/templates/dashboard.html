@@ -30,6 +30,10 @@
     <div class="val text-display">{{ sessions_week }}</div>
     <div class="lbl">Conexões esta semana</div>
   </div>
+  <div class="stat-card">
+    <div class="val text-display" id="stat-new-week" style="color: var(--cyan)">{{ new_this_week }}</div>
+    <div class="lbl">Novos esta semana</div>
+  </div>
 </div>
 
 <!-- Gráfico de conexões por dia -->
@@ -180,6 +184,7 @@
         el = document.getElementById('stat-online');        if (el) el.textContent = d.online;
         el = document.getElementById('stat-offline');       if (el) el.textContent = d.offline;
         el = document.getElementById('stat-sessions-today'); if (el) el.textContent = d.sessions_today;
+        el = document.getElementById('stat-new-week'); if (el) el.textContent = d.new_this_week || 0;
       })
       .catch(function() {});
   }

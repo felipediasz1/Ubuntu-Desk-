@@ -655,6 +655,11 @@ def index():
     total     = total_peers
     active    = sum(1 for p in peers if p["status"] == 1)
 
+    # Novos dispositivos esta semana
+    week_ago_peers = (date.today() - timedelta(days=7)).isoformat()
+    new_week_row  = query("SELECT COUNT(*) AS cnt FROM peer WHERE created_at >= ?", (week_ago_peers,))
+    new_this_week = new_week_row[0]["cnt"] if new_week_row else 0
+
     # Métricas de sessões
     today    = date.today().isoformat()
     week_ago = (date.today() - timedelta(days=7)).isoformat()
@@ -682,6 +687,7 @@ def index():
         active=active,
         db_exists=db_exists,
         db_path=DB_PATH,
+        new_this_week=new_this_week,
         sessions_today=sessions_today,
         sessions_week=sessions_week,
         daily_labels=daily_labels,

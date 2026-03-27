@@ -44,3 +44,9 @@ def test_live_stats_returns_json(auth_client, monkeypatch):
     assert "offline" in data
     assert "total" in data
     assert "sessions_today" in data
+
+def test_dashboard_has_new_devices_stat(auth_client, monkeypatch):
+    monkeypatch.setattr(flask_app, "DB_PATH", "")
+    r = auth_client.get("/")
+    assert r.status_code == 200
+    assert b"Novos esta semana" in r.data or b"novos esta semana" in r.data
