@@ -7,15 +7,15 @@
 <!-- Stats de dispositivos -->
 <div class="stat-grid">
   <div class="stat-card">
-    <div class="val">{{ total }}</div>
+    <div class="val" id="stat-total">{{ total }}</div>
     <div class="lbl">Registrados</div>
   </div>
   <div class="stat-card">
-    <div class="val" style="color: var(--green)">{{ active }}</div>
+    <div class="val" id="stat-online" style="color: var(--green)">{{ active }}</div>
     <div class="lbl">Online</div>
   </div>
   <div class="stat-card">
-    <div class="val" style="color: var(--muted)">{{ total - active }}</div>
+    <div class="val" id="stat-offline" style="color: var(--muted)">{{ total - active }}</div>
     <div class="lbl">Offline</div>
   </div>
 </div>
@@ -23,7 +23,7 @@
 <!-- Métricas de sessões -->
 <div class="stat-grid" style="margin-top:12px;margin-bottom:24px;">
   <div class="stat-card">
-    <div class="val text-display">{{ sessions_today }}</div>
+    <div class="val text-display" id="stat-sessions-today">{{ sessions_today }}</div>
     <div class="lbl">Conexões hoje</div>
   </div>
   <div class="stat-card">
@@ -167,5 +167,24 @@
   }
 </script>
 {% endif %}
+
+<script nonce="{{ csp_nonce }}">
+(function() {
+  function refreshStats() {
+    fetch('/live-stats', { credentials: 'same-origin' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) {
+        if (!d) return;
+        var el;
+        el = document.getElementById('stat-total');         if (el) el.textContent = d.total;
+        el = document.getElementById('stat-online');        if (el) el.textContent = d.online;
+        el = document.getElementById('stat-offline');       if (el) el.textContent = d.offline;
+        el = document.getElementById('stat-sessions-today'); if (el) el.textContent = d.sessions_today;
+      })
+      .catch(function() {});
+  }
+  setInterval(refreshStats, 30000);
+})();
+</script>
 
 {% endblock %}
