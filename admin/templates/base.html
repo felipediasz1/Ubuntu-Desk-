@@ -304,6 +304,8 @@
     table { font-size: 12px; }
     th, td { padding: 8px 10px; }
   }
+
+  tbody tr.kb-focus td { background: rgba(6,182,212,0.08) !important; outline: 1px solid rgba(6,182,212,0.3); }
   </style>
   {% block extra_style %}{% endblock %}
 </head>
@@ -529,6 +531,32 @@ document.addEventListener('keydown', function(e) {
     e.preventDefault();
     var s = document.getElementById('global-search');
     if (s) s.focus();
+    return;
+  }
+
+  if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT') return;
+
+  var rows = Array.from(document.querySelectorAll('tbody tr[data-href], tbody tr.peer-row'));
+  if (!rows.length) return;
+
+  var current = document.querySelector('tbody tr.kb-focus');
+  var idx = current ? rows.indexOf(current) : -1;
+
+  if (e.key === 'j' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (current) current.classList.remove('kb-focus');
+    idx = Math.min(idx + 1, rows.length - 1);
+    rows[idx].classList.add('kb-focus');
+    rows[idx].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'k' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (current) current.classList.remove('kb-focus');
+    idx = Math.max(idx - 1, 0);
+    rows[idx].classList.add('kb-focus');
+    rows[idx].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'Enter' && current) {
+    var link = current.querySelector('a[href]');
+    if (link) window.location = link.href;
   }
 });
 </script>

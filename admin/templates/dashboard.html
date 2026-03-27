@@ -133,7 +133,7 @@
       </thead>
       <tbody>
         {% for p in peers %}
-        <tr>
+        <tr class="peer-row" data-href="{{ url_for('peer_detail', peer_id=p.id) }}">
           <td>
             <input type="checkbox" class="peer-checkbox" name="peer_ids" value="{{ p.id }}"
                    style="cursor:pointer;" aria-label="Selecionar {{ p.hostname }}">
