@@ -548,6 +548,11 @@ def fmt_dt(dt_str):
     except Exception:
         return dt_str
 
+def _count_new_peers_since(since_iso: str) -> int:
+    """Return count of peers registered on or after since_iso (YYYY-MM-DD)."""
+    row = query("SELECT COUNT(*) AS cnt FROM peer WHERE created_at >= ?", (since_iso,))
+    return row[0]["cnt"] if row else 0
+
 # ── Rotas ─────────────────────────────────────────────────────────────────────
 @app.route("/health")
 def health():
@@ -657,8 +662,7 @@ def index():
 
     # Novos dispositivos esta semana
     week_ago_peers = (date.today() - timedelta(days=7)).isoformat()
-    new_week_row  = query("SELECT COUNT(*) AS cnt FROM peer WHERE created_at >= ?", (week_ago_peers,))
-    new_this_week = new_week_row[0]["cnt"] if new_week_row else 0
+    new_this_week = _count_new_peers_since(week_ago_peers)
 
     # Métricas de sessões
     today    = date.today().isoformat()
@@ -1278,8 +1282,7 @@ def live_stats():
     online = sum(1 for r in rows if r["status"] == 1)
     today    = date.today().isoformat()
     week_ago = (date.today() - timedelta(days=7)).isoformat()
-    new_row  = query("SELECT COUNT(*) AS cnt FROM peer WHERE created_at >= ?", (week_ago,))
-    new_this_week = new_row[0]["cnt"] if new_row else 0
+    new_this_week = _count_new_peers_since(week_ago)
     conn = _get_sessions_db()
     sessions_today = conn.execute(
         "SELECT COUNT(*) FROM sessions WHERE started_at >= ?", (today,)
