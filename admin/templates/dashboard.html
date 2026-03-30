@@ -6,15 +6,15 @@
 
 <!-- Stats de dispositivos -->
 <div class="stat-grid">
-  <div class="stat-card">
+  <div class="stat-card" role="region" aria-label="Total de dispositivos registrados">
     <div class="val" id="stat-total">{{ total }}</div>
     <div class="lbl">Registrados</div>
   </div>
-  <div class="stat-card">
+  <div class="stat-card" role="region" aria-label="Dispositivos online">
     <div class="val" id="stat-online" style="color: var(--green)">{{ active }}</div>
     <div class="lbl">Online</div>
   </div>
-  <div class="stat-card">
+  <div class="stat-card" role="region" aria-label="Dispositivos offline">
     <div class="val" id="stat-offline" style="color: var(--muted)">{{ total - active }}</div>
     <div class="lbl">Offline</div>
   </div>
@@ -22,15 +22,15 @@
 
 <!-- Métricas de sessões -->
 <div class="stat-grid" style="margin-top:12px;margin-bottom:24px;">
-  <div class="stat-card">
+  <div class="stat-card" role="region" aria-label="Conexões hoje">
     <div class="val text-display" id="stat-sessions-today">{{ sessions_today }}</div>
     <div class="lbl">Conexões hoje</div>
   </div>
-  <div class="stat-card">
+  <div class="stat-card" role="region" aria-label="Conexões esta semana">
     <div class="val text-display">{{ sessions_week }}</div>
     <div class="lbl">Conexões esta semana</div>
   </div>
-  <div class="stat-card">
+  <div class="stat-card" role="region" aria-label="Novos dispositivos esta semana">
     <div class="val text-display" id="stat-new-week" style="color: var(--cyan)">{{ new_this_week }}</div>
     <div class="lbl">Novos esta semana</div>
   </div>
@@ -77,7 +77,8 @@
 <!-- DB aviso -->
 {% if not db_exists %}
 <div class="alert alert-warn">
-  ⚠ Banco de dados não encontrado em <code>{{ db_path }}</code>.<br>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="16" height="16" style="vertical-align:-3px;flex-shrink:0;" aria-hidden="true"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+  Banco de dados não encontrado em <code>{{ db_path }}</code>.<br>
   Inicie o servidor hbbs para que ele crie o banco automaticamente.
 </div>
 {% endif %}
@@ -86,6 +87,7 @@
 {% if peers %}
 <div style="margin-bottom: 16px;">
   <input id="peer-search" type="search" placeholder="Buscar por ID, hostname ou usuário…"
+         aria-label="Buscar dispositivos por ID, hostname ou usuário"
          style="width:100%;padding:9px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:14px;outline:none;">
 </div>
 {% endif %}
@@ -93,9 +95,9 @@
 {% if all_tags %}
 <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
   <span style="color:var(--muted);font-size:13px;">Tag:</span>
-  <a href="?" class="btn btn-ghost" style="padding:3px 10px;font-size:12px;{% if not tag_filter %}border:1px solid var(--cyan);color:var(--cyan);{% endif %}">Todas</a>
+  <a href="?" class="btn btn-ghost" style="padding:3px 10px;font-size:12px;cursor:pointer;{% if not tag_filter %}border:1px solid var(--cyan);color:var(--cyan);{% endif %}">Todas</a>
   {% for t in all_tags %}
-  <a href="?tag={{ t }}" class="btn btn-ghost" style="padding:3px 10px;font-size:12px;{% if tag_filter == t %}border:1px solid var(--cyan);color:var(--cyan);{% endif %}">{{ t }}</a>
+  <a href="?tag={{ t }}" class="btn btn-ghost" style="padding:3px 10px;font-size:12px;cursor:pointer;{% if tag_filter == t %}border:1px solid var(--cyan);color:var(--cyan);{% endif %}">{{ t }}</a>
   {% endfor %}
 </div>
 {% endif %}
@@ -108,9 +110,9 @@
   <!-- Floating bulk toolbar (hidden until checkboxes selected) -->
   <div id="bulk-toolbar" style="display:none;position:sticky;top:16px;z-index:100;background:var(--bg2);border:1px solid var(--cyan);border-radius:10px;padding:10px 16px;margin-bottom:16px;align-items:center;gap:12px;flex-wrap:wrap;">
     <span id="bulk-count" style="color:var(--cyan);font-weight:600;font-size:13px;"></span>
-    <button type="button" onclick="bulkAction('block')" class="btn btn-ghost" style="padding:6px 14px;font-size:13px;">Bloquear</button>
-    <button type="button" onclick="bulkAction('unblock')" class="btn btn-ghost" style="padding:6px 14px;font-size:13px;">Desbloquear</button>
-    <button type="button" onclick="bulkAction('export')" class="btn btn-cyan" style="padding:6px 14px;font-size:13px;">&#11015; Exportar CSV</button>
+    <button type="button" data-bulk-action="block" class="btn btn-ghost" style="padding:6px 14px;font-size:13px;">Bloquear</button>
+    <button type="button" data-bulk-action="unblock" class="btn btn-ghost" style="padding:6px 14px;font-size:13px;">Desbloquear</button>
+    <button type="button" data-bulk-action="export" class="btn btn-cyan" style="padding:6px 14px;font-size:13px;">&#11015; Exportar CSV</button>
   </div>
 
   <!-- Tabela de dispositivos -->
@@ -122,12 +124,12 @@
           <th style="width:32px;">
             <input type="checkbox" id="select-all" style="cursor:pointer;" aria-label="Selecionar todos">
           </th>
-          <th><a href="?sort=id&dir={{ 'asc' if sort_col == 'id' and sort_dir == 'desc' else 'desc' if sort_col == 'id' and sort_dir == 'asc' else 'asc' }}" style="color:inherit;text-decoration:none;">ID {% if sort_col == 'id' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}</a></th>
-          <th><a href="?sort=hostname&dir={{ 'asc' if sort_col == 'hostname' and sort_dir == 'desc' else 'desc' if sort_col == 'hostname' and sort_dir == 'asc' else 'asc' }}" style="color:inherit;text-decoration:none;">Hostname {% if sort_col == 'hostname' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}</a></th>
+          <th aria-sort="{{ 'ascending' if sort_col == 'id' and sort_dir == 'asc' else 'descending' if sort_col == 'id' and sort_dir == 'desc' else 'none' }}"><a href="?sort=id&dir={{ 'asc' if sort_col == 'id' and sort_dir == 'desc' else 'desc' if sort_col == 'id' and sort_dir == 'asc' else 'asc' }}" style="color:inherit;text-decoration:none;">ID {% if sort_col == 'id' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}</a></th>
+          <th aria-sort="{{ 'ascending' if sort_col == 'hostname' and sort_dir == 'asc' else 'descending' if sort_col == 'hostname' and sort_dir == 'desc' else 'none' }}"><a href="?sort=hostname&dir={{ 'asc' if sort_col == 'hostname' and sort_dir == 'desc' else 'desc' if sort_col == 'hostname' and sort_dir == 'asc' else 'asc' }}" style="color:inherit;text-decoration:none;">Hostname {% if sort_col == 'hostname' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}</a></th>
           <th>Sistema</th>
           <th>Usuário</th>
-          <th><a href="?sort=status&dir={{ 'asc' if sort_col == 'status' and sort_dir == 'desc' else 'desc' if sort_col == 'status' and sort_dir == 'asc' else 'asc' }}" style="color:inherit;text-decoration:none;">Status {% if sort_col == 'status' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}</a></th>
-          <th><a href="?sort=created_at&dir={{ 'asc' if sort_col == 'created_at' and sort_dir == 'desc' else 'desc' if sort_col == 'created_at' and sort_dir == 'asc' else 'desc' }}" style="color:inherit;text-decoration:none;">Registrado em {% if sort_col == 'created_at' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}</a></th>
+          <th aria-sort="{{ 'ascending' if sort_col == 'status' and sort_dir == 'asc' else 'descending' if sort_col == 'status' and sort_dir == 'desc' else 'none' }}"><a href="?sort=status&dir={{ 'asc' if sort_col == 'status' and sort_dir == 'desc' else 'desc' if sort_col == 'status' and sort_dir == 'asc' else 'asc' }}" style="color:inherit;text-decoration:none;">Status {% if sort_col == 'status' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}</a></th>
+          <th aria-sort="{{ 'ascending' if sort_col == 'created_at' and sort_dir == 'asc' else 'descending' if sort_col == 'created_at' and sort_dir == 'desc' else 'none' }}"><a href="?sort=created_at&dir={{ 'asc' if sort_col == 'created_at' and sort_dir == 'desc' else 'desc' if sort_col == 'created_at' and sort_dir == 'asc' else 'desc' }}" style="color:inherit;text-decoration:none;">Registrado em {% if sort_col == 'created_at' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}</a></th>
           <th></th>
         </tr>
       </thead>
@@ -141,7 +143,13 @@
           <td>
             <form method="post" action="{{ url_for('peer_star' if not p.starred else 'peer_unstar', peer_id=p.id) }}" style="display:inline;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button type="submit" class="btn-icon" title="{{ 'Remover favorito' if p.starred else 'Favoritar' }}" style="background:none;border:none;cursor:pointer;color:{{ '#FCD34D' if p.starred else 'var(--text-muted)' }};font-size:1.1em;padding:0 4px 0 0;vertical-align:middle;">{{ '★' if p.starred else '☆' }}</button>
+              <button type="submit" class="btn-icon" aria-label="{{ 'Remover favorito' if p.starred else 'Favoritar' }}" title="{{ 'Remover favorito' if p.starred else 'Favoritar' }}" style="background:none;border:none;cursor:pointer;color:{{ '#FCD34D' if p.starred else 'var(--muted)' }};padding:0 4px 0 0;vertical-align:middle;line-height:1;">
+                {% if p.starred %}
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401z" clip-rule="evenodd"/></svg>
+                {% else %}
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="16" height="16" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.563.563 0 00-.182-.557l-4.204-3.601a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.499z"/></svg>
+                {% endif %}
+              </button>
             </form>
             <a href="{{ url_for('peer_detail', peer_id=p.id) }}" class="id-code">{{ p.id }}</a>
           </td>
@@ -168,8 +176,10 @@
             <a href="{{ url_for('peer_detail', peer_id=p.id) }}"
                class="btn btn-ghost" style="padding:4px 10px;font-size:12px;">Detalhes</a>
             <a href="ubuntu-desk://{{ p.id }}"
-               class="btn btn-ghost" style="padding:4px 10px;font-size:12px;"
-               title="Conectar via Ubuntu Desk">↗</a>
+               class="btn btn-ghost" style="padding:4px 10px;font-size:12px;display:inline-flex;align-items:center;gap:4px;"
+               title="Conectar via Ubuntu Desk" aria-label="Conectar via Ubuntu Desk ao dispositivo {{ p.id }}">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="13" height="13" aria-hidden="true"><path fill-rule="evenodd" d="M4.25 5.5a.75.75 0 00-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 00.75-.75v-4a.75.75 0 011.5 0v4A2.25 2.25 0 0112.75 17h-8.5A2.25 2.25 0 012 14.75v-8.5A2.25 2.25 0 014.25 4h5a.75.75 0 010 1.5h-5zM10 2.75a.75.75 0 01.75-.75h6.5a.75.75 0 01.75.75v6.5a.75.75 0 01-1.5 0V4.56l-5.47 5.47a.75.75 0 01-1.06-1.06l5.47-5.47h-4.69a.75.75 0 01-.75-.75z" clip-rule="evenodd"/></svg>
+            </a>
           </td>
         </tr>
         {% endfor %}
@@ -262,10 +272,12 @@
     if (e.target.classList.contains('peer-checkbox')) updateToolbar();
   });
 
-  window.bulkAction = function(action) {
-    document.getElementById('bulk-action').value = action;
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-bulk-action]');
+    if (!btn) return;
+    document.getElementById('bulk-action').value = btn.dataset.bulkAction;
     document.getElementById('bulk-form').submit();
-  };
+  });
 })();
 </script>
 
