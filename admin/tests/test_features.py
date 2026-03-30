@@ -162,3 +162,85 @@ def test_offline_alert_check_no_crash(auth_client, monkeypatch):
         flask_app._check_offline_devices()
     except Exception as e:
         pytest.fail(f"_check_offline_devices raised: {e}")
+
+
+def test_offline_alert_fires_when_peer_offline_beyond_threshold(monkeypatch, tmp_path):
+    """Alert should fire when a peer has been offline longer than the threshold."""
+    import sqlite3, time as _time
+
+    api_db = str(tmp_path / "api.db")
+    monkeypatch.setattr(flask_app, "API_DB", api_db)
+    monkeypatch.setattr(flask_app, "_api_db_initialized", False)
+    monkeypatch.setattr(flask_app, "DB_PATH", "")
+
+    # Initialise DB and set threshold to 1 hour
+    conn = flask_app._get_api_db()
+    conn.execute("UPDATE alert_config SET offline_threshold_hours=1, alert_events='[]' WHERE id=1")
+    # Seed peer_status_track: offline_since = 2h ago, never alerted
+    two_hours_ago = _time.time() - 7200
+    conn.execute("""
+        INSERT OR REPLACE INTO peer_status_track (peer_id, last_online, offline_since, alerted_at)
+        VALUES ('P_TEST', ?, ?, NULL)
+    """, (two_hours_ago, two_hours_ago))
+    conn.commit()
+    conn.close()
+
+    # Patch query() to return one offline peer
+    monkeypatch.setattr(flask_app, "query", lambda *a, **kw: [{"id": "P_TEST", "status": 0}])
+
+    alerts_fired = []
+    monkeypatch.setattr(flask_app, "_dispatch_alert", lambda ev, detail: alerts_fired.append((ev, detail)))
+
+    flask_app._check_offline_devices()
+
+    assert len(alerts_fired) == 1
+    assert alerts_fired[0][0] == "peer_offline"
+    assert alerts_fired[0][1]["peer_id"] == "P_TEST"
+
+
+def test_offline_alert_skipped_when_threshold_zero(monkeypatch, tmp_path):
+    """No alert when threshold is 0 (disabled)."""
+    api_db = str(tmp_path / "api.db")
+    monkeypatch.setattr(flask_app, "API_DB", api_db)
+    monkeypatch.setattr(flask_app, "_api_db_initialized", False)
+    monkeypatch.setattr(flask_app, "DB_PATH", "")
+
+    conn = flask_app._get_api_db()
+    conn.execute("UPDATE alert_config SET offline_threshold_hours=0 WHERE id=1")
+    conn.commit()
+    conn.close()
+
+    alerts_fired = []
+    monkeypatch.setattr(flask_app, "_dispatch_alert", lambda ev, detail: alerts_fired.append(ev))
+
+    flask_app._check_offline_devices()
+    assert alerts_fired == []
+
+
+def test_offline_alert_cooldown_prevents_double_alert(monkeypatch, tmp_path):
+    """Alert should not fire again if alerted_at is within cooldown window."""
+    import time as _time
+
+    api_db = str(tmp_path / "api.db")
+    monkeypatch.setattr(flask_app, "API_DB", api_db)
+    monkeypatch.setattr(flask_app, "_api_db_initialized", False)
+    monkeypatch.setattr(flask_app, "DB_PATH", "")
+
+    conn = flask_app._get_api_db()
+    conn.execute("UPDATE alert_config SET offline_threshold_hours=1, alert_events='[]' WHERE id=1")
+    now = _time.time()
+    # offline_since = 2h ago, alerted_at = 30min ago (within cooldown)
+    conn.execute("""
+        INSERT OR REPLACE INTO peer_status_track (peer_id, last_online, offline_since, alerted_at)
+        VALUES ('P_COOL', ?, ?, ?)
+    """, (now - 7200, now - 7200, now - 1800))
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(flask_app, "query", lambda *a, **kw: [{"id": "P_COOL", "status": 0}])
+
+    alerts_fired = []
+    monkeypatch.setattr(flask_app, "_dispatch_alert", lambda ev, detail: alerts_fired.append(ev))
+
+    flask_app._check_offline_devices()
+    assert alerts_fired == []
