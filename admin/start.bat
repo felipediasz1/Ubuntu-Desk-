@@ -24,9 +24,10 @@ if errorlevel 1 (
 )
 
 :: Valores padrao
-if not defined ADMIN_PASSWORD set ADMIN_PASSWORD=ubuntu-desk-admin
-if not defined PORT           set PORT=8088
-if not defined SECRET_KEY     set SECRET_KEY=mude-esta-chave-em-producao
+if not defined ADMIN_PASSWORD    set ADMIN_PASSWORD=UbuntuDesk@Local1
+if not defined PORT              set PORT=8088
+if not defined SECRET_KEY        set SECRET_KEY=mude-esta-chave-em-producao
+if not defined REQUIRE_ADMIN_2FA set REQUIRE_ADMIN_2FA=0
 
 echo.
 echo  ========================================
